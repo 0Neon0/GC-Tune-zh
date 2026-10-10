@@ -1,0 +1,19 @@
+# Build artifacts
+classes/
+*.class
+*.dex
+*.jar
+*.apk
+*.idsig
+
+# Backups & temp files
+*.bak
+*.tmp
+*~
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
