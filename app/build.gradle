@@ -1,0 +1,52 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.poc.gctune'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.poc.gctune'
+        minSdk 26
+        targetSdk 30
+        versionCode 11
+        versionName '1.2.0-material3'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('../../poc_gcrce/poc.keystore')
+            storePassword 'android'
+            keyAlias 'gd'
+            keyPassword 'android'
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+        }
+    }
+
+    lint {
+        disable 'ExpiredTargetSdkVersion'
+        abortOnError false
+    }
+}
+
+dependencies {
+    implementation 'com.google.android.material:material:1.13.0'
+}

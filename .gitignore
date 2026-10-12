@@ -5,6 +5,10 @@ classes/
 *.jar
 *.apk
 *.idsig
+.gradle/
+build/
+app/build/
+local.properties
 
 # Backups & temp files
 *.bak
