@@ -261,11 +261,12 @@ public class Main extends Activity {
     // IconPack Studio style: background layer + foreground icon
     private boolean iconsBgEnabled = false;
     private int iconsBgColor = 0xFFFFFFFF;
+    private int iconsScale = 100;
     private int iconsFgScale = 76;
     private int iconsRadius = 25;
     private int iconsShape = IconsTinter.SHAPE_ROUNDED;
     private EditText iconsBgInput;
-    private Slider sbDesat, sbLighten, sbStrength, sbFgScale, sbRadius;
+    private Slider sbDesat, sbLighten, sbStrength, sbIconScale, sbFgScale, sbRadius;
     // icon-style flip state (see toggleIconsStyle)
     private String pendingOldStyle = null;
     private boolean styleToggleOk = true;
@@ -1470,6 +1471,7 @@ public class Main extends Activity {
         iconsPackLabel = prefs.getString("icons_pack_label", iconsPackLabel);
         iconsBgEnabled = prefs.getBoolean("icons_bg", iconsBgEnabled);
         iconsBgColor = prefs.getInt("icons_bg_color", iconsBgColor);
+        iconsScale = prefs.getInt("icons_scale", iconsScale);
         iconsFgScale = prefs.getInt("icons_fg_scale", iconsFgScale);
         iconsRadius = prefs.getInt("icons_radius", iconsRadius);
         iconsShape = prefs.getInt("icons_shape", iconsShape);
@@ -1678,7 +1680,10 @@ public class Main extends Activity {
         });
         styleCard.addView(bgRow, bgRowLp);
 
-        sbFgScale = addSlider(styleCard, "Размер иконки", 15, 200, iconsFgScale, new IntSetter() {
+        sbIconScale = addSlider(styleCard, "Масштаб всей иконки (на экране)", 30, 250, iconsScale, new IntSetter() {
+            @Override public void set(int v) { iconsScale = v; }
+        });
+        sbFgScale = addSlider(styleCard, "Масштаб рисунка внутри", 15, 150, iconsFgScale, new IntSetter() {
             @Override public void set(int v) { iconsFgScale = v; }
         });
         sbRadius = addSlider(styleCard, "Скругление углов", 0, 50, iconsRadius, new IntSetter() {
@@ -1944,6 +1949,7 @@ public class Main extends Activity {
                 .putString("icons_pack_label", iconsPackLabel)
                 .putBoolean("icons_bg", iconsBgEnabled)
                 .putInt("icons_bg_color", iconsBgColor)
+                .putInt("icons_scale", iconsScale)
                 .putInt("icons_fg_scale", iconsFgScale)
                 .putInt("icons_radius", iconsRadius)
                 .putInt("icons_shape", iconsShape)
@@ -1955,8 +1961,12 @@ public class Main extends Activity {
         if (sbDesat != null) sbDesat.setValue(100f);
         if (sbLighten != null) sbLighten.setValue(0f);
         if (sbStrength != null) sbStrength.setValue(100f);
+        if (sbIconScale != null) sbIconScale.setValue(100f);
         if (sbFgScale != null) sbFgScale.setValue(76f);
         if (sbRadius != null) sbRadius.setValue(25f);
+        iconsScale = 100;
+        iconsFgScale = 76;
+        iconsRadius = 25;
         iconsShape = IconsTinter.SHAPE_ROUNDED;
         toast("Настройки сброшены");
         saveIconsPrefs();
@@ -2079,18 +2089,19 @@ public class Main extends Activity {
         iconsPreviewRow.removeAllViews();
         iconsTinted.clear();
         int n = Math.min(iconsPackages.size(), 8);
+        int previewH = Math.max(Ui.dp(this, 28), Math.min(Ui.dp(this, 72), Math.round(Ui.dp(this, 44) * (iconsScale / 100f))));
         for (int i = 0; i < n; i++) {
             Drawable orig = iconsOriginals.get(i);
             Drawable src = packIconOrNull(iconsPackages.get(i));
             if (src == null) src = orig;
             Bitmap pb = IconsTinter.compose(src, iconsColor, iconsDesat, iconsLighten, iconsStrength,
-                    iconsBgEnabled, iconsBgColor, iconsFgScale, iconsRadius, iconsShape);
+                    iconsBgEnabled, iconsBgColor, iconsScale, iconsFgScale, iconsRadius, iconsShape);
             Drawable tinted = (pb != null) ? new BitmapDrawable(getResources(), pb) : orig;
             iconsTinted.add(tinted);
             ImageView iv = new ImageView(this);
             iv.setImageDrawable(tinted);
             iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, Ui.dp(this, 44), 1f);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, previewH, 1f);
             iconsPreviewRow.addView(iv, lp);
         }
     }
@@ -2158,7 +2169,7 @@ public class Main extends Activity {
                         if (src != null) {
                             bmp = IconsTinter.compose(src, iconsColor, iconsDesat, iconsLighten,
                                     iconsStrength, iconsBgEnabled, iconsBgColor,
-                                    iconsFgScale, iconsRadius, iconsShape);
+                                    iconsScale, iconsFgScale, iconsRadius, iconsShape);
                         }
                     } catch (Throwable t) {
                         Log.e("GCTune", "render " + pkg + " failed: " + t);
@@ -2208,18 +2219,18 @@ public class Main extends Activity {
                     File launcherDir = new File(dir, "launcher");
                     launcherDir.mkdirs();
 
-                    Bitmap mask320 = IconsTinter.generateMask(320, 320, iconsShape, iconsRadius, iconsFgScale);
+                    Bitmap mask320 = IconsTinter.generateMask(320, 320, iconsShape, iconsRadius, iconsScale);
                     FileOutputStream m320os = new FileOutputStream(new File(launcherDir, "icon_mask.png"));
                     mask320.compress(Bitmap.CompressFormat.PNG, 100, m320os);
                     m320os.close();
 
-                    Bitmap mask192 = IconsTinter.generateMask(192, 192, iconsShape, iconsRadius, iconsFgScale);
+                    Bitmap mask192 = IconsTinter.generateMask(192, 192, iconsShape, iconsRadius, iconsScale);
                     FileOutputStream m192os = new FileOutputStream(new File(launcherDir, "icon_mask_5x9.png"));
                     mask192.compress(Bitmap.CompressFormat.PNG, 100, m192os);
                     m192os.close();
 
                     // Generate shape background with selected color (or white) so launcher's background tile matches shape
-                    Bitmap bg320 = IconsTinter.generateBg(320, 320, iconsShape, iconsRadius, iconsFgScale,
+                    Bitmap bg320 = IconsTinter.generateBg(320, 320, iconsShape, iconsRadius, iconsScale,
                             iconsBgEnabled ? iconsBgColor : 0xFFFFFFFF);
                     FileOutputStream bgOs = new FileOutputStream(new File(launcherDir, "icon_bg_default.png"));
                     bg320.compress(Bitmap.CompressFormat.PNG, 100, bgOs);

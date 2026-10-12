@@ -473,46 +473,51 @@ final class IconsTinter {
     }
 
     /**
-     * Full renderer with custom shape control.
+     * Full renderer with custom shape control and icon sizing.
      *
-     * @param fgScale   glyph size in percent (15..200: from miniature 15% to massive oversized 200%)
+     * @param iconScale overall icon tile scale in percent (30..250: miniature 30% to huge oversized 250%)
+     * @param fgScale   glyph size inside shape in percent (15..150: miniature 15% to oversized 150%)
      * @param shapeType SHAPE_ROUNDED, SHAPE_SQUIRCLE, SHAPE_CIRCLE, etc.
      */
     static Bitmap compose(Drawable icon, int tint, int desat, int lighten, int strength,
-                          boolean bgEnabled, int bgColor, int fgScale, int radiusPct, int shapeType) {
+                          boolean bgEnabled, int bgColor, int iconScale, int fgScale, int radiusPct, int shapeType) {
         if (icon == null) return null;
         desat = clamp(desat);
         lighten = clamp(lighten);
         strength = clamp(strength);
-        // Ultra-wide scaling support: 15% (tiny minimal) to 200% (oversized full-canvas badge)
-        fgScale = Math.max(15, Math.min(200, fgScale));
+        iconScale = Math.max(30, Math.min(250, iconScale));
+        fgScale = Math.max(15, Math.min(150, fgScale));
         radiusPct = clamp(radiusPct);
 
-        float iconSize = SIZE * (fgScale / 100.0f);
-        float offset = (SIZE - iconSize) / 2.0f;
-        RectF iconBounds = new RectF(offset, offset, offset + iconSize, offset + iconSize);
+        // Calculate physical canvas size based on iconScale. Base size is 192px.
+        // At 100%: 192px. At 200%: 384px. At 50%: 96px.
+        int canvasSize = Math.max(48, Math.round(SIZE * (iconScale / 100.0f)));
+
+        // The background shape fills the canvasSize
+        RectF iconBounds = new RectF(0f, 0f, canvasSize, canvasSize);
         Path shapePath = buildShapePath(shapeType, iconBounds, radiusPct);
 
         if (!bgEnabled) {
-            Bitmap layer = drawIcon(icon, 0f, 0f, SIZE, SIZE);
+            Bitmap layer = drawIcon(icon, 0f, 0f, canvasSize, canvasSize, canvasSize);
             if (layer == null) return null;
-            Bitmap tinted = tintBitmap(layer, tint, desat, lighten, strength);
+            Bitmap tinted = tintBitmap(layer, tint, desat, lighten, strength, canvasSize);
             layer.recycle();
             if (tinted == null) return null;
 
             Rect bbox = new Rect();
             if (!alphaBBox(tinted, bbox, 10)) {
-                bbox.set(0, 0, SIZE, SIZE);
+                bbox.set(0, 0, canvasSize, canvasSize);
             }
 
-            // Scale tinted glyph to fit nicely inside iconBounds
-            float s = iconSize / Math.max(bbox.width(), bbox.height());
+            // Scale tinted glyph according to fgScale inside the canvas
+            float targetDim = canvasSize * (fgScale / 100.0f);
+            float s = targetDim / Math.max(bbox.width(), bbox.height());
             float w = bbox.width() * s;
             float h = bbox.height() * s;
-            RectF dst = new RectF(SIZE / 2f - w / 2f, SIZE / 2f - h / 2f,
-                    SIZE / 2f + w / 2f, SIZE / 2f + h / 2f);
+            RectF dst = new RectF(canvasSize / 2f - w / 2f, canvasSize / 2f - h / 2f,
+                    canvasSize / 2f + w / 2f, canvasSize / 2f + h / 2f);
 
-            Bitmap out = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888);
+            Bitmap out = Bitmap.createBitmap(canvasSize, canvasSize, Bitmap.Config.ARGB_8888);
             try {
                 Canvas c = new Canvas(out);
                 c.clipPath(shapePath);
@@ -537,36 +542,36 @@ final class IconsTinter {
             }
         }
 
-        Bitmap layer = drawIcon(fgSource, 0f, 0f, SIZE, SIZE);
+        Bitmap layer = drawIcon(fgSource, 0f, 0f, canvasSize, canvasSize, canvasSize);
         Rect bbox = new Rect();
         boolean ok = layer != null && alphaBBox(layer, bbox, 10)
-                && bbox.width() >= SIZE * 0.15f && bbox.height() >= SIZE * 0.15f;
+                && bbox.width() >= canvasSize * 0.15f && bbox.height() >= canvasSize * 0.15f;
         if (!ok && fgSource != icon) {
             if (layer != null) layer.recycle();
-            layer = drawIcon(icon, 0f, 0f, SIZE, SIZE);
+            layer = drawIcon(icon, 0f, 0f, canvasSize, canvasSize, canvasSize);
             ok = layer != null && alphaBBox(layer, bbox, 10)
-                    && bbox.width() >= SIZE * 0.10f && bbox.height() >= SIZE * 0.10f;
+                    && bbox.width() >= canvasSize * 0.10f && bbox.height() >= canvasSize * 0.10f;
         }
         if (!ok) {
             if (layer != null) layer.recycle();
-            layer = drawIcon(icon, 0f, 0f, SIZE, SIZE);
+            layer = drawIcon(icon, 0f, 0f, canvasSize, canvasSize, canvasSize);
             if (layer == null) return null;
-            bbox.set(0, 0, SIZE, SIZE);
+            bbox.set(0, 0, canvasSize, canvasSize);
         }
 
-        Bitmap tinted = tintBitmap(layer, tint, desat, lighten, strength);
+        Bitmap tinted = tintBitmap(layer, tint, desat, lighten, strength, canvasSize);
         if (layer != null) layer.recycle();
         if (tinted == null) return null;
 
-        // Foreground glyph safe zone inside the styled tile (66.7% of tile)
-        float glyphTarget = iconSize * 0.667f;
+        // Foreground glyph safe zone inside the styled tile: scaled by fgScale
+        float glyphTarget = canvasSize * (fgScale / 100.0f);
         float s = glyphTarget / Math.max(bbox.width(), bbox.height());
         float w = bbox.width() * s;
         float h = bbox.height() * s;
-        RectF dst = new RectF(SIZE / 2f - w / 2f, SIZE / 2f - h / 2f,
-                SIZE / 2f + w / 2f, SIZE / 2f + h / 2f);
+        RectF dst = new RectF(canvasSize / 2f - w / 2f, canvasSize / 2f - h / 2f,
+                canvasSize / 2f + w / 2f, canvasSize / 2f + h / 2f);
 
-        Bitmap out = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888);
+        Bitmap out = Bitmap.createBitmap(canvasSize, canvasSize, Bitmap.Config.ARGB_8888);
         try {
             Canvas c = new Canvas(out);
             Paint bp = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -584,6 +589,12 @@ final class IconsTinter {
         return out;
     }
 
+    /** Compatibility overloads for previous callers */
+    static Bitmap compose(Drawable icon, int tint, int desat, int lighten, int strength,
+                          boolean bgEnabled, int bgColor, int fgScale, int radiusPct, int shapeType) {
+        return compose(icon, tint, desat, lighten, strength, bgEnabled, bgColor, 100, fgScale, radiusPct, shapeType);
+    }
+
     /** Compatibility overload for previous callers */
     static Bitmap compose(Drawable icon, int tint, int desat, int lighten, int strength,
                           boolean bgEnabled, int bgColor, int fgScale, int radiusPct) {
@@ -592,10 +603,10 @@ final class IconsTinter {
 
     // ------------------------------------------------------------------ pipeline
 
-    /** Draws the drawable into the given box of a fresh SIZE x SIZE bitmap. */
-    private static Bitmap drawIcon(Drawable icon, float l, float t, float r, float b) {
+    /** Draws the drawable into the given box of a fresh size x size bitmap. */
+    private static Bitmap drawIcon(Drawable icon, float l, float t, float r, float b, int size) {
         if (icon == null) return null;
-        Bitmap bmp = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888);
+        Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
         try {
             Canvas c = new Canvas(bmp);
             icon.setBounds((int) l, (int) t, (int) r, (int) b);
@@ -607,9 +618,13 @@ final class IconsTinter {
         return bmp;
     }
 
+    private static Bitmap drawIcon(Drawable icon, float l, float t, float r, float b) {
+        return drawIcon(icon, l, t, r, b, SIZE);
+    }
+
     /** Desaturate -> multiply by normalized tint -> lighten -> mix with original. */
-    private static Bitmap tintBitmap(Bitmap src, int tint, int desat, int lighten, int strength) {
-        Bitmap gray = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888);
+    private static Bitmap tintBitmap(Bitmap src, int tint, int desat, int lighten, int strength, int size) {
+        Bitmap gray = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
         try {
             Paint p1 = new Paint(1);
             ColorMatrix sat = new ColorMatrix();
@@ -634,7 +649,7 @@ final class IconsTinter {
                     0f, 0f, b, 0f, 0f,
                     0f, 0f, 0f, 1f, 0f}));
 
-            Bitmap tinted = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888);
+            Bitmap tinted = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
             try {
                 Canvas c2 = new Canvas(tinted);
                 c2.drawBitmap(gray, 0.0f, 0.0f, p2);
@@ -647,7 +662,7 @@ final class IconsTinter {
 
                 if (strength >= 100) return tinted;
 
-                Bitmap out = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888);
+                Bitmap out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
                 try {
                     Canvas c3 = new Canvas(out);
                     c3.drawBitmap(src, 0.0f, 0.0f, null);
@@ -718,21 +733,21 @@ final class IconsTinter {
      * Generates a monochrome mask bitmap (solid black inside shape, transparent outside)
      * matching the system mask format (OriginOS expects black silhouette on transparent background).
      */
-    static Bitmap generateMask(int width, int height, int shapeType, int radiusPct, int fgScale) {
-        return generateBg(width, height, shapeType, radiusPct, fgScale, 0xFF000000);
+    static Bitmap generateMask(int width, int height, int shapeType, int radiusPct, int iconScale) {
+        return generateBg(width, height, shapeType, radiusPct, iconScale, 0xFF000000);
     }
 
     /**
      * Generates a shape-fitted background tile of given color.
      */
-    static Bitmap generateBg(int width, int height, int shapeType, int radiusPct, int fgScale, int color) {
-        Bitmap out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+    static Bitmap generateBg(int width, int height, int shapeType, int radiusPct, int iconScale, int color) {
+        // Compute scaled canvas size. E.g. at 150%, 320 -> 480.
+        float scale = Math.max(30, Math.min(250, iconScale)) / 100.0f;
+        int targetW = Math.max(32, Math.round(width * scale));
+        int targetH = Math.max(32, Math.round(height * scale));
+        Bitmap out = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(out);
-        float scale = Math.max(15, Math.min(200, fgScale)) / 100.0f;
-        float size = Math.min(width, height) * scale;
-        float offsetW = (width - size) / 2.0f;
-        float offsetH = (height - size) / 2.0f;
-        RectF rect = new RectF(offsetW, offsetH, offsetW + size, offsetH + size);
+        RectF rect = new RectF(0f, 0f, targetW, targetH);
         Path shapePath = buildShapePath(shapeType, rect, radiusPct);
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         p.setColor(color);
