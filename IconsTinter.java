@@ -50,20 +50,31 @@ final class IconsTinter {
         return compose(icon, tint, desat, lighten, strength, false, 0, 100, 0);
     }
 
-    // Shape presets (Material 3 Expressive Collection)
-    static final int SHAPE_ROUNDED = 0;   // Rounded rect (controlled by radiusPct)
-    static final int SHAPE_SQUIRCLE = 1;  // Smooth squircle (continuous curve)
-    static final int SHAPE_CIRCLE = 2;    // Full Circle
-    static final int SHAPE_TEARDROP = 3;  // Teardrop (rounded top + left, point bottom-right)
-    static final int SHAPE_HEXAGON = 4;   // Rounded Hexagon
-    static final int SHAPE_OCTAGON = 5;   // Rounded Octagon
-    static final int SHAPE_STAR = 6;      // Rounded Flower / Star
-    static final int SHAPE_PEBBLE = 7;    // Asymmetric smooth pebble
-    static final int SHAPE_PENTAGON = 8;  // M3 Rounded Pentagon
-    static final int SHAPE_DIAMOND = 9;   // M3 Smooth Rhombus / Diamond
-    static final int SHAPE_CLOVER = 10;   // M3 4-Leaf Clover
-    static final int SHAPE_ARCH = 11;     // M3 Architectural Arch (pill top, flat bottom)
-    static final int SHAPE_SUNBURST = 12; // M3 Sunny / 8-pointed Badge
+    // Shape presets (Material 3 Expressive Comprehensive Collection)
+    static final int SHAPE_ROUNDED = 0;    // Скругленный квадрат
+    static final int SHAPE_SQUIRCLE = 1;   // Squircle / Суперэллипс
+    static final int SHAPE_CIRCLE = 2;     // Круг
+    static final int SHAPE_TEARDROP = 3;   // Капля (закругленный угол)
+    static final int SHAPE_HEXAGON = 4;    // Шестигранник
+    static final int SHAPE_OCTAGON = 5;    // Восьмигранник
+    static final int SHAPE_STAR = 6;       // Цветок (12 лепестков)
+    static final int SHAPE_PEBBLE = 7;     // Галька (асимметричная)
+    static final int SHAPE_PENTAGON = 8;   // Пятигранник
+    static final int SHAPE_DIAMOND = 9;    // Ромб / Diamond
+    static final int SHAPE_CLOVER = 10;    // Клевер (4 лепестка)
+    static final int SHAPE_ARCH = 11;      // Арка (закругленный верх)
+    static final int SHAPE_SUNBURST = 12;  // Солнце (8 лучей)
+    static final int SHAPE_HEART = 13;     // Сердце (M3 Expressive Heart)
+    static final int SHAPE_TRIANGLE = 14;  // Треугольник скругленный
+    static final int SHAPE_SEMI_CIRCLE = 15;// Полукруг (Flat bottom)
+    static final int SHAPE_PILL_V = 16;    // Вертикальная капсула / Pill
+    static final int SHAPE_BURST16 = 17;   // Острая звезда (16 лучей)
+    static final int SHAPE_FLOWER16 = 18;  // Ромашка (16 круглых лепестков)
+    static final int SHAPE_SCALLOP = 19;   // Волнистый круг (Scallop)
+    static final int SHAPE_BUN = 20;       // Булочка (pill с выемкой снизу)
+    static final int SHAPE_PIXEL = 21;     // Пиксельный значок (Pixelated badge)
+    static final int SHAPE_CORNER_ROUND = 22; // Скруглен 1 угол (Quarter round)
+    static final int SHAPE_SLANTED = 23;   // Скошенный параллелограмм (Slanted)
 
     /**
      * Builds a geometric Path for the icon background tile or mask within the given rectangle.
@@ -176,6 +187,106 @@ final class IconsTinter {
                         Math.min(r, size * 0.15f), Math.min(r, size * 0.15f)
                 };
                 p.addRoundRect(rect, radii, Path.Direction.CW);
+                break;
+            }
+
+            case SHAPE_HEART: {
+                // Smooth Material 3 Expressive Heart
+                float top = rect.top, bottom = rect.bottom, left = rect.left, right = rect.right;
+                p.moveTo(cx, top + size * 0.35f);
+                p.cubicTo(cx - size * 0.3f, top, left, top + size * 0.3f, left, top + size * 0.55f);
+                p.cubicTo(left, bottom - size * 0.2f, cx - size * 0.15f, bottom - size * 0.05f, cx, bottom);
+                p.cubicTo(cx + size * 0.15f, bottom - size * 0.05f, right, bottom - size * 0.2f, right, top + size * 0.55f);
+                p.cubicTo(right, top + size * 0.3f, cx + size * 0.3f, top, cx, top + size * 0.35f);
+                p.close();
+                break;
+            }
+
+            case SHAPE_TRIANGLE: {
+                // Smooth rounded triangle (pointing up)
+                float rad = size / 2f;
+                float cr = Math.max(3f, Math.min(rad * 0.35f, r));
+                p = createRoundedPolygon(cx, cy + size * 0.06f, rad * 0.95f, 3, -90f, cr);
+                break;
+            }
+
+            case SHAPE_SEMI_CIRCLE: {
+                // Semi-circle (arch top, completely flat bottom)
+                float[] radii = new float[]{
+                        size / 2f, size / 2f,
+                        size / 2f, size / 2f,
+                        0f, 0f,
+                        0f, 0f
+                };
+                p.addRoundRect(new RectF(rect.left, rect.top + size * 0.25f, rect.right, rect.bottom), radii, Path.Direction.CW);
+                break;
+            }
+
+            case SHAPE_PILL_V: {
+                // Vertical capsule / pill
+                float pw = size * 0.65f;
+                RectF pillR = new RectF(cx - pw / 2f, rect.top, cx + pw / 2f, rect.bottom);
+                p.addRoundRect(pillR, pw / 2f, pw / 2f, Path.Direction.CW);
+                break;
+            }
+
+            case SHAPE_BURST16: {
+                // 16-pointed sharp star burst
+                p = createFlowerBadge(cx, cy, size / 2f, size * 0.30f, 16);
+                break;
+            }
+
+            case SHAPE_FLOWER16: {
+                // 16-lobed daisy / sunflower badge
+                p = createFlowerBadge(cx, cy, size / 2f, size * 0.43f, 16);
+                break;
+            }
+
+            case SHAPE_SCALLOP: {
+                // 8-lobed wavy scallop
+                p = createFlowerBadge(cx, cy, size / 2f, size * 0.42f, 8);
+                break;
+            }
+
+            case SHAPE_BUN: {
+                // Rounded bun with arched bottom cut
+                float cr = size * 0.35f;
+                p.moveTo(rect.left, rect.bottom);
+                p.lineTo(rect.left, rect.top + cr);
+                p.quadTo(rect.left, rect.top, rect.left + cr, rect.top);
+                p.lineTo(rect.right - cr, rect.top);
+                p.quadTo(rect.right, rect.top, rect.right, rect.top + cr);
+                p.lineTo(rect.right, rect.bottom);
+                p.quadTo(cx, rect.bottom - size * 0.25f, rect.left, rect.bottom);
+                p.close();
+                break;
+            }
+
+            case SHAPE_PIXEL: {
+                // Stepped 8-bit / pixelated badge approximation
+                p = createRoundedPolygon(cx, cy, size / 2f, 8, 22.5f, 0f);
+                break;
+            }
+
+            case SHAPE_CORNER_ROUND: {
+                // Only 1 corner rounded (quarter round leaf)
+                float[] radii = new float[]{
+                        0f, 0f,
+                        size, size,
+                        0f, 0f,
+                        0f, 0f
+                };
+                p.addRoundRect(rect, radii, Path.Direction.CW);
+                break;
+            }
+
+            case SHAPE_SLANTED: {
+                // Slanted rounded parallelogram
+                p.moveTo(rect.left + size * 0.2f, rect.top);
+                p.lineTo(rect.right, rect.top);
+                p.lineTo(rect.right - size * 0.2f, rect.bottom);
+                p.lineTo(rect.left, rect.bottom);
+                p.close();
                 break;
             }
 
@@ -510,6 +621,29 @@ final class IconsTinter {
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         p.setColor(color);
         c.drawPath(shapePath, p);
+        return out;
+    }
+
+    /**
+     * Generates a miniature shape thumbnail bitmap with outline and subtle fill for UI selectors.
+     */
+    static Bitmap generateShapeThumbnail(int size, int shapeType, int radiusPct, int fillColor, int strokeColor) {
+        Bitmap out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(out);
+        float pad = size * 0.12f;
+        RectF r = new RectF(pad, pad, size - pad, size - pad);
+        Path path = buildShapePath(shapeType, r, radiusPct);
+
+        Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+        fill.setColor(fillColor);
+        c.drawPath(path, fill);
+
+        Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+        stroke.setStyle(Paint.Style.STROKE);
+        stroke.setStrokeWidth(Math.max(2f, size * 0.06f));
+        stroke.setColor(strokeColor);
+        c.drawPath(path, stroke);
+
         return out;
     }
 

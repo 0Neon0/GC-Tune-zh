@@ -1695,59 +1695,121 @@ public class Main extends Activity {
 
         final String[] shapeNames = {
                 "Закругленный", "Squircle", "Круг", "Капля", "Шестигранник", "Восьмигранник",
-                "Цветок", "Галька", "Пятигранник", "Ромб", "Клевер", "Арка", "Солнце"
+                "Цветок (12л)", "Галька", "Пятигранник", "Ромб", "Клевер", "Арка",
+                "Солнце", "Сердце", "Треугольник", "Полукруг", "Капсула (Pill)", "Звезда 16л",
+                "Ромашка 16л", "Волнистый (Scallop)", "Булочка (Bun)", "Пиксели", "1 Угол", "Скошенный"
         };
         final int[] shapeIds = {
                 IconsTinter.SHAPE_ROUNDED, IconsTinter.SHAPE_SQUIRCLE, IconsTinter.SHAPE_CIRCLE,
                 IconsTinter.SHAPE_TEARDROP, IconsTinter.SHAPE_HEXAGON, IconsTinter.SHAPE_OCTAGON,
                 IconsTinter.SHAPE_STAR, IconsTinter.SHAPE_PEBBLE, IconsTinter.SHAPE_PENTAGON,
                 IconsTinter.SHAPE_DIAMOND, IconsTinter.SHAPE_CLOVER, IconsTinter.SHAPE_ARCH,
-                IconsTinter.SHAPE_SUNBURST
+                IconsTinter.SHAPE_SUNBURST, IconsTinter.SHAPE_HEART, IconsTinter.SHAPE_TRIANGLE,
+                IconsTinter.SHAPE_SEMI_CIRCLE, IconsTinter.SHAPE_PILL_V, IconsTinter.SHAPE_BURST16,
+                IconsTinter.SHAPE_FLOWER16, IconsTinter.SHAPE_SCALLOP, IconsTinter.SHAPE_BUN,
+                IconsTinter.SHAPE_PIXEL, IconsTinter.SHAPE_CORNER_ROUND, IconsTinter.SHAPE_SLANTED
         };
 
-        android.widget.HorizontalScrollView hScroll = new android.widget.HorizontalScrollView(this);
-        hScroll.setHorizontalScrollBarEnabled(false);
-        final LinearLayout chipRow = new LinearLayout(this);
-        chipRow.setOrientation(LinearLayout.HORIZONTAL);
-        chipRow.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 6));
+        // Current shape preview row (card selector with thumbnail, title and arrow)
+        final LinearLayout shapePickerBtn = new LinearLayout(this);
+        shapePickerBtn.setOrientation(LinearLayout.HORIZONTAL);
+        shapePickerBtn.setGravity(Gravity.CENTER_VERTICAL);
+        shapePickerBtn.setBackground(Ui.shape(this, Ui.SURFACE_HIGH, 10f, Ui.BORDER_SOFT, 1f));
+        shapePickerBtn.setPadding(Ui.dp(this, 12), Ui.dp(this, 10), Ui.dp(this, 12), Ui.dp(this, 10));
 
-        final List<TextView> chips = new ArrayList<>();
-        for (int si = 0; si < shapeIds.length; si++) {
-            final int sId = shapeIds[si];
-            final TextView chip = new TextView(this);
-            chip.setText(shapeNames[si]);
-            chip.setTextSize(12f);
-            chip.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-            boolean sel = (iconsShape == sId);
-            chip.setTextColor(sel ? 0xFF0D0F12 : Ui.TEXT);
-            chip.setBackground(Ui.pillShape(this, sel ? Ui.ACCENT : Ui.SURFACE_HIGH,
-                    sel ? 0 : Ui.BORDER_SOFT, sel ? 0 : 1f));
-            chip.setPadding(Ui.dp(this, 14), Ui.dp(this, 7), Ui.dp(this, 14), Ui.dp(this, 7));
+        final ImageView currentShapeThumb = new ImageView(this);
+        int thumbSize = Ui.dp(this, 36);
+        currentShapeThumb.setImageBitmap(IconsTinter.generateShapeThumbnail(thumbSize, iconsShape, iconsRadius, Ui.ACCENT, 0xFFFFFFFF));
+        shapePickerBtn.addView(currentShapeThumb, new LinearLayout.LayoutParams(thumbSize, thumbSize));
 
-            LinearLayout.LayoutParams chItemLp = new LinearLayout.LayoutParams(-2, -2);
-            chItemLp.rightMargin = Ui.dp(this, 8);
-            chip.setLayoutParams(chItemLp);
-
-            chip.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) {
-                    Ui.tap(v);
-                    iconsShape = sId;
-                    for (int k = 0; k < chips.size(); k++) {
-                        boolean kSel = (shapeIds[k] == iconsShape);
-                        chips.get(k).setTextColor(kSel ? 0xFF0D0F12 : Ui.TEXT);
-                        chips.get(k).setBackground(Ui.pillShape(Main.this,
-                                kSel ? Ui.ACCENT : Ui.SURFACE_HIGH,
-                                kSel ? 0 : Ui.BORDER_SOFT, kSel ? 0 : 1f));
-                    }
-                    saveIconsPrefs();
-                    refreshIconsPreview();
-                }
-            });
-            chips.add(chip);
-            chipRow.addView(chip);
+        final LinearLayout shapeInfo = Ui.col(this);
+        shapeInfo.setPadding(Ui.dp(this, 12), 0, Ui.dp(this, 8), 0);
+        String initialShapeName = "Закругленный";
+        for (int i = 0; i < shapeIds.length; i++) {
+            if (shapeIds[i] == iconsShape) {
+                initialShapeName = shapeNames[i];
+                break;
+            }
         }
-        hScroll.addView(chipRow);
-        styleCard.addView(hScroll, new LinearLayout.LayoutParams(-1, -2));
+        final TextView currentShapeTitle = Ui.text(this, initialShapeName, 14f, Ui.TEXT);
+        currentShapeTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        final TextView shapeSub = Ui.text(this, "24 M3 Expressive формы · Нажмите для выбора", 11.5f, Ui.MUTED);
+        shapeInfo.addView(currentShapeTitle);
+        shapeInfo.addView(shapeSub);
+        shapePickerBtn.addView(shapeInfo, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        ImageView chevron = new ImageView(this);
+        chevron.setImageDrawable(M3Icons.chevron(Ui.MUTED, Ui.dp(this, 20)));
+        shapePickerBtn.addView(chevron, new LinearLayout.LayoutParams(Ui.dp(this, 20), Ui.dp(this, 20)));
+
+        shapePickerBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Ui.tap(v);
+                ScrollView dlgScroll = new ScrollView(Main.this);
+                dlgScroll.setBackgroundColor(Ui.SURFACE);
+                LinearLayout grid = Ui.col(Main.this);
+                grid.setPadding(Ui.dp(Main.this, 16), Ui.dp(Main.this, 16), Ui.dp(Main.this, 16), Ui.dp(Main.this, 16));
+                dlgScroll.addView(grid, new FrameLayout.LayoutParams(-1, -2));
+
+                final AlertDialog dialog = new AlertDialog.Builder(Main.this)
+                        .setTitle("Выберите форму (Material 3 Expressive)")
+                        .setView(dlgScroll)
+                        .setNegativeButton("Закрыть", null)
+                        .create();
+
+                int itemThumbSize = Ui.dp(Main.this, 38);
+                for (int i = 0; i < shapeIds.length; i++) {
+                    final int sId = shapeIds[i];
+                    final String sName = shapeNames[i];
+                    final boolean isSel = (iconsShape == sId);
+
+                    LinearLayout itemRow = new LinearLayout(Main.this);
+                    itemRow.setOrientation(LinearLayout.HORIZONTAL);
+                    itemRow.setGravity(Gravity.CENTER_VERTICAL);
+                    itemRow.setPadding(Ui.dp(Main.this, 12), Ui.dp(Main.this, 10), Ui.dp(Main.this, 12), Ui.dp(Main.this, 10));
+                    itemRow.setBackground(Ui.shape(Main.this, isSel ? 0x223D7D56 : 0x00000000, 8f, isSel ? Ui.ACCENT : 0x00000000, isSel ? 1.5f : 0f));
+
+                    ImageView iv = new ImageView(Main.this);
+                    iv.setImageBitmap(IconsTinter.generateShapeThumbnail(itemThumbSize, sId, iconsRadius,
+                            isSel ? Ui.ACCENT : Ui.SURFACE_HIGH, isSel ? 0xFFFFFFFF : Ui.MUTED));
+                    itemRow.addView(iv, new LinearLayout.LayoutParams(itemThumbSize, itemThumbSize));
+
+                    TextView tv = Ui.text(Main.this, sName, 14f, isSel ? Ui.ACCENT : Ui.TEXT);
+                    tv.setTypeface(Typeface.create("sans-serif-medium", isSel ? Typeface.BOLD : Typeface.NORMAL));
+                    tv.setPadding(Ui.dp(Main.this, 14), 0, 0, 0);
+                    itemRow.addView(tv, new LinearLayout.LayoutParams(0, -2, 1f));
+
+                    if (isSel) {
+                        ImageView check = new ImageView(Main.this);
+                        check.setImageDrawable(M3Icons.check(Ui.ACCENT, Ui.dp(Main.this, 20)));
+                        itemRow.addView(check, new LinearLayout.LayoutParams(Ui.dp(Main.this, 20), Ui.dp(Main.this, 20)));
+                    }
+
+                    itemRow.setOnClickListener(new View.OnClickListener() {
+                        @Override public void onClick(View itemV) {
+                            Ui.tap(itemV);
+                            iconsShape = sId;
+                            currentShapeTitle.setText(sName);
+                            int curSize = Ui.dp(Main.this, 36);
+                            currentShapeThumb.setImageBitmap(IconsTinter.generateShapeThumbnail(curSize, iconsShape, iconsRadius, Ui.ACCENT, 0xFFFFFFFF));
+                            saveIconsPrefs();
+                            refreshIconsPreview();
+                            dialog.dismiss();
+                        }
+                    });
+
+                    LinearLayout.LayoutParams itemLp = new LinearLayout.LayoutParams(-1, -2);
+                    itemLp.bottomMargin = Ui.dp(Main.this, 6);
+                    grid.addView(itemRow, itemLp);
+                }
+
+                dialog.show();
+            }
+        });
+
+        LinearLayout.LayoutParams pickerLp = new LinearLayout.LayoutParams(-1, -2);
+        pickerLp.topMargin = Ui.dp(this, 10);
+        styleCard.addView(shapePickerBtn, pickerLp);
 
         LinearLayout.LayoutParams styleCardLp = new LinearLayout.LayoutParams(-1, -2);
         styleCardLp.bottomMargin = Ui.dp(this, 14);
