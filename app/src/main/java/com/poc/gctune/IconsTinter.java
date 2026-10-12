@@ -5,6 +5,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PorterDuff;
@@ -12,6 +13,10 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.AdaptiveIconDrawable;
 import android.graphics.drawable.Drawable;
+
+import androidx.graphics.shapes.RoundedPolygon;
+import androidx.graphics.shapes.Shapes_androidKt;
+import com.google.android.material.shape.MaterialShapes;
 
 /**
  * Icon rendering for the recolor tab.
@@ -50,36 +55,147 @@ final class IconsTinter {
         return compose(icon, tint, desat, lighten, strength, false, 0, 100, 0);
     }
 
-    // Shape presets (Material 3 Expressive Comprehensive Collection)
-    static final int SHAPE_ROUNDED = 0;    // Скругленный квадрат
-    static final int SHAPE_SQUIRCLE = 1;   // Squircle / Суперэллипс
-    static final int SHAPE_CIRCLE = 2;     // Круг
-    static final int SHAPE_TEARDROP = 3;   // Капля (закругленный угол)
-    static final int SHAPE_HEXAGON = 4;    // Шестигранник
-    static final int SHAPE_OCTAGON = 5;    // Восьмигранник
-    static final int SHAPE_STAR = 6;       // Цветок (12 лепестков)
-    static final int SHAPE_PEBBLE = 7;     // Галька (асимметричная)
-    static final int SHAPE_PENTAGON = 8;   // Пятигранник
-    static final int SHAPE_DIAMOND = 9;    // Ромб / Diamond
-    static final int SHAPE_CLOVER = 10;    // Клевер (4 лепестка)
-    static final int SHAPE_ARCH = 11;      // Арка (закругленный верх)
-    static final int SHAPE_SUNBURST = 12;  // Солнце (8 лучей)
-    static final int SHAPE_HEART = 13;     // Сердце (M3 Expressive Heart)
-    static final int SHAPE_TRIANGLE = 14;  // Треугольник скругленный
-    static final int SHAPE_SEMI_CIRCLE = 15;// Полукруг (Flat bottom)
-    static final int SHAPE_PILL_V = 16;    // Вертикальная капсула / Pill
-    static final int SHAPE_BURST16 = 17;   // Острая звезда (16 лучей)
-    static final int SHAPE_FLOWER16 = 18;  // Ромашка (16 круглых лепестков)
-    static final int SHAPE_SCALLOP = 19;   // Волнистый круг (Scallop)
-    static final int SHAPE_BUN = 20;       // Булочка (pill с выемкой снизу)
-    static final int SHAPE_PIXEL = 21;     // Пиксельный значок (Pixelated badge)
-    static final int SHAPE_CORNER_ROUND = 22; // Скруглен 1 угол (Quarter round)
-    static final int SHAPE_SLANTED = 23;   // Скошенный параллелограмм (Slanted)
+    // Official Google Material 3 Expressive Shapes (com.google.android.material.shape.MaterialShapes)
+    static final int SHAPE_M3_CIRCLE = 0;
+    static final int SHAPE_M3_SQUARE = 1;
+    static final int SHAPE_M3_SLANTED_SQUARE = 2;
+    static final int SHAPE_M3_ARCH = 3;
+    static final int SHAPE_M3_FAN = 4;
+    static final int SHAPE_M3_ARROW = 5;
+    static final int SHAPE_M3_SEMI_CIRCLE = 6;
+    static final int SHAPE_M3_OVAL = 7;
+    static final int SHAPE_M3_PILL = 8;
+    static final int SHAPE_M3_TRIANGLE = 9;
+    static final int SHAPE_M3_DIAMOND = 10;
+    static final int SHAPE_M3_CLAM_SHELL = 11;
+    static final int SHAPE_M3_PENTAGON = 12;
+    static final int SHAPE_M3_GEM = 13;
+    static final int SHAPE_M3_SUNNY = 14;
+    static final int SHAPE_M3_VERY_SUNNY = 15;
+    static final int SHAPE_M3_COOKIE_4 = 16;
+    static final int SHAPE_M3_COOKIE_6 = 17;
+    static final int SHAPE_M3_COOKIE_7 = 18;
+    static final int SHAPE_M3_COOKIE_9 = 19;
+    static final int SHAPE_M3_COOKIE_12 = 20;
+    static final int SHAPE_M3_GHOSTISH = 21;
+    static final int SHAPE_M3_CLOVER_4 = 22;
+    static final int SHAPE_M3_CLOVER_8 = 23;
+    static final int SHAPE_M3_BURST = 24;
+    static final int SHAPE_M3_SOFT_BURST = 25;
+    static final int SHAPE_M3_BOOM = 26;
+    static final int SHAPE_M3_SOFT_BOOM = 27;
+    static final int SHAPE_M3_FLOWER = 28;
+    static final int SHAPE_M3_PUFFY = 29;
+    static final int SHAPE_M3_PUFFY_DIAMOND = 30;
+    static final int SHAPE_M3_PIXEL_CIRCLE = 31;
+    static final int SHAPE_M3_PIXEL_TRIANGLE = 32;
+    static final int SHAPE_M3_BUN = 33;
+    static final int SHAPE_M3_HEART = 34;
+
+    // Backward compatibility aliases
+    static final int SHAPE_ROUNDED = SHAPE_M3_SQUARE;
+    static final int SHAPE_SQUIRCLE = SHAPE_M3_COOKIE_4;
+    static final int SHAPE_CIRCLE = SHAPE_M3_CIRCLE;
+    static final int SHAPE_TEARDROP = SHAPE_M3_CLAM_SHELL;
+    static final int SHAPE_HEXAGON = SHAPE_M3_COOKIE_6;
+    static final int SHAPE_OCTAGON = SHAPE_M3_CLOVER_8;
+    static final int SHAPE_STAR = SHAPE_M3_FLOWER;
+    static final int SHAPE_PEBBLE = SHAPE_M3_GEM;
+    static final int SHAPE_PENTAGON = SHAPE_M3_PENTAGON;
+    static final int SHAPE_DIAMOND = SHAPE_M3_DIAMOND;
+    static final int SHAPE_CLOVER = SHAPE_M3_CLOVER_4;
+    static final int SHAPE_ARCH = SHAPE_M3_ARCH;
+    static final int SHAPE_SUNBURST = SHAPE_M3_SUNNY;
+    static final int SHAPE_HEART = SHAPE_M3_HEART;
+    static final int SHAPE_TRIANGLE = SHAPE_M3_TRIANGLE;
+    static final int SHAPE_SEMI_CIRCLE = SHAPE_M3_SEMI_CIRCLE;
+    static final int SHAPE_PILL_V = SHAPE_M3_PILL;
+    static final int SHAPE_BURST16 = SHAPE_M3_BURST;
+    static final int SHAPE_FLOWER16 = SHAPE_M3_COOKIE_12;
+    static final int SHAPE_SCALLOP = SHAPE_M3_COOKIE_9;
+    static final int SHAPE_BUN = SHAPE_M3_BUN;
+    static final int SHAPE_PIXEL = SHAPE_M3_PIXEL_CIRCLE;
+    static final int SHAPE_CORNER_ROUND = SHAPE_M3_FAN;
+    static final int SHAPE_SLANTED = SHAPE_M3_SLANTED_SQUARE;
+
+    static RoundedPolygon getOfficialPolygon(int shapeType) {
+        switch (shapeType) {
+            case SHAPE_M3_CIRCLE: return MaterialShapes.CIRCLE;
+            case SHAPE_M3_SQUARE: return MaterialShapes.SQUARE;
+            case SHAPE_M3_SLANTED_SQUARE: return MaterialShapes.SLANTED_SQUARE;
+            case SHAPE_M3_ARCH: return MaterialShapes.ARCH;
+            case SHAPE_M3_FAN: return MaterialShapes.FAN;
+            case SHAPE_M3_ARROW: return MaterialShapes.ARROW;
+            case SHAPE_M3_SEMI_CIRCLE: return MaterialShapes.SEMI_CIRCLE;
+            case SHAPE_M3_OVAL: return MaterialShapes.OVAL;
+            case SHAPE_M3_PILL: return MaterialShapes.PILL;
+            case SHAPE_M3_TRIANGLE: return MaterialShapes.TRIANGLE;
+            case SHAPE_M3_DIAMOND: return MaterialShapes.DIAMOND;
+            case SHAPE_M3_CLAM_SHELL: return MaterialShapes.CLAM_SHELL;
+            case SHAPE_M3_PENTAGON: return MaterialShapes.PENTAGON;
+            case SHAPE_M3_GEM: return MaterialShapes.GEM;
+            case SHAPE_M3_SUNNY: return MaterialShapes.SUNNY;
+            case SHAPE_M3_VERY_SUNNY: return MaterialShapes.VERY_SUNNY;
+            case SHAPE_M3_COOKIE_4: return MaterialShapes.COOKIE_4;
+            case SHAPE_M3_COOKIE_6: return MaterialShapes.COOKIE_6;
+            case SHAPE_M3_COOKIE_7: return MaterialShapes.COOKIE_7;
+            case SHAPE_M3_COOKIE_9: return MaterialShapes.COOKIE_9;
+            case SHAPE_M3_COOKIE_12: return MaterialShapes.COOKIE_12;
+            case SHAPE_M3_GHOSTISH: return MaterialShapes.GHOSTISH;
+            case SHAPE_M3_CLOVER_4: return MaterialShapes.CLOVER_4;
+            case SHAPE_M3_CLOVER_8: return MaterialShapes.CLOVER_8;
+            case SHAPE_M3_BURST: return MaterialShapes.BURST;
+            case SHAPE_M3_SOFT_BURST: return MaterialShapes.SOFT_BURST;
+            case SHAPE_M3_BOOM: return MaterialShapes.BOOM;
+            case SHAPE_M3_SOFT_BOOM: return MaterialShapes.SOFT_BOOM;
+            case SHAPE_M3_FLOWER: return MaterialShapes.FLOWER;
+            case SHAPE_M3_PUFFY: return MaterialShapes.PUFFY;
+            case SHAPE_M3_PUFFY_DIAMOND: return MaterialShapes.PUFFY_DIAMOND;
+            case SHAPE_M3_PIXEL_CIRCLE: return MaterialShapes.PIXEL_CIRCLE;
+            case SHAPE_M3_PIXEL_TRIANGLE: return MaterialShapes.PIXEL_TRIANGLE;
+            case SHAPE_M3_BUN: return MaterialShapes.BUN;
+            case SHAPE_M3_HEART: return MaterialShapes.HEART;
+            default: return MaterialShapes.SQUARE;
+        }
+    }
+
+    private static Path getOfficialM3Path(RoundedPolygon polygon, RectF rect) {
+        if (polygon == null) return null;
+        try {
+            float[] b = polygon.calculateBounds();
+            if (b == null || b.length < 4) return null;
+            float bLeft = b[0], bTop = b[1], bRight = b[2], bBottom = b[3];
+            float bW = bRight - bLeft;
+            float bH = bBottom - bTop;
+            if (bW <= 0 || bH <= 0) return null;
+
+            Matrix matrix = new Matrix();
+            float scale = Math.min(rect.width() / bW, rect.height() / bH);
+            matrix.postTranslate(-bLeft, -bTop);
+            matrix.postScale(scale, scale);
+            float scaledW = bW * scale;
+            float scaledH = bH * scale;
+            matrix.postTranslate(rect.left + (rect.width() - scaledW) / 2f, rect.top + (rect.height() - scaledH) / 2f);
+
+            RoundedPolygon transformed = Shapes_androidKt.transformed(polygon, matrix);
+            return Shapes_androidKt.toPath(transformed);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
 
     /**
      * Builds a geometric Path for the icon background tile or mask within the given rectangle.
      */
     static Path buildShapePath(int shapeType, RectF rect, float radiusPct) {
+        RoundedPolygon poly = getOfficialPolygon(shapeType);
+        if (poly != null) {
+            Path officialPath = getOfficialM3Path(poly, rect);
+            if (officialPath != null) {
+                return officialPath;
+            }
+        }
+
         Path p = new Path();
         float w = rect.width();
         float h = rect.height();

@@ -1695,20 +1695,26 @@ public class Main extends Activity {
         styleCard.addView(shapeHead, shLp);
 
         final String[] shapeNames = {
-                "Закругленный", "Squircle", "Круг", "Капля", "Шестигранник", "Восьмигранник",
-                "Цветок (12л)", "Галька", "Пятигранник", "Ромб", "Клевер", "Арка",
-                "Солнце", "Сердце", "Треугольник", "Полукруг", "Капсула (Pill)", "Звезда 16л",
-                "Ромашка 16л", "Волнистый (Scallop)", "Булочка (Bun)", "Пиксели", "1 Угол", "Скошенный"
+                "Круг (Circle)", "Квадрат (Square)", "Скошенный (Slanted Square)", "Арка (Arch)",
+                "Веер (Fan)", "Стрелка (Arrow)", "Полукруг (Semi-Circle)", "Овал (Oval)",
+                "Капсула (Pill)", "Треугольник (Triangle)", "Ромб (Diamond)", "Ракушка (Clam Shell)",
+                "Пятигранник (Pentagon)", "Кристалл (Gem)", "Солнце (Sunny)", "Яркое солнце (Very Sunny)",
+                "Печенье 4 (Cookie 4)", "Печенье 6 (Cookie 6)", "Печенье 7 (Cookie 7)", "Печенье 9 (Cookie 9)",
+                "Печенье 12 (Cookie 12)", "Привидение (Ghostish)", "Клевер 4 (Clover 4)", "Клевер 8 (Clover 8)",
+                "Вспышка (Burst)", "Мягкая вспышка (Soft Burst)", "Взрыв (Boom)", "Мягкий взрыв (Soft Boom)",
+                "Цветок (Flower)", "Облачко (Puffy)", "Пышный ромб (Puffy Diamond)", "Пиксельный круг (Pixel Circle)",
+                "Пиксельный треугольник (Pixel Triangle)", "Булочка (Bun)", "Сердце (Heart)"
         };
         final int[] shapeIds = {
-                IconsTinter.SHAPE_ROUNDED, IconsTinter.SHAPE_SQUIRCLE, IconsTinter.SHAPE_CIRCLE,
-                IconsTinter.SHAPE_TEARDROP, IconsTinter.SHAPE_HEXAGON, IconsTinter.SHAPE_OCTAGON,
-                IconsTinter.SHAPE_STAR, IconsTinter.SHAPE_PEBBLE, IconsTinter.SHAPE_PENTAGON,
-                IconsTinter.SHAPE_DIAMOND, IconsTinter.SHAPE_CLOVER, IconsTinter.SHAPE_ARCH,
-                IconsTinter.SHAPE_SUNBURST, IconsTinter.SHAPE_HEART, IconsTinter.SHAPE_TRIANGLE,
-                IconsTinter.SHAPE_SEMI_CIRCLE, IconsTinter.SHAPE_PILL_V, IconsTinter.SHAPE_BURST16,
-                IconsTinter.SHAPE_FLOWER16, IconsTinter.SHAPE_SCALLOP, IconsTinter.SHAPE_BUN,
-                IconsTinter.SHAPE_PIXEL, IconsTinter.SHAPE_CORNER_ROUND, IconsTinter.SHAPE_SLANTED
+                IconsTinter.SHAPE_M3_CIRCLE, IconsTinter.SHAPE_M3_SQUARE, IconsTinter.SHAPE_M3_SLANTED_SQUARE, IconsTinter.SHAPE_M3_ARCH,
+                IconsTinter.SHAPE_M3_FAN, IconsTinter.SHAPE_M3_ARROW, IconsTinter.SHAPE_M3_SEMI_CIRCLE, IconsTinter.SHAPE_M3_OVAL,
+                IconsTinter.SHAPE_M3_PILL, IconsTinter.SHAPE_M3_TRIANGLE, IconsTinter.SHAPE_M3_DIAMOND, IconsTinter.SHAPE_M3_CLAM_SHELL,
+                IconsTinter.SHAPE_M3_PENTAGON, IconsTinter.SHAPE_M3_GEM, IconsTinter.SHAPE_M3_SUNNY, IconsTinter.SHAPE_M3_VERY_SUNNY,
+                IconsTinter.SHAPE_M3_COOKIE_4, IconsTinter.SHAPE_M3_COOKIE_6, IconsTinter.SHAPE_M3_COOKIE_7, IconsTinter.SHAPE_M3_COOKIE_9,
+                IconsTinter.SHAPE_M3_COOKIE_12, IconsTinter.SHAPE_M3_GHOSTISH, IconsTinter.SHAPE_M3_CLOVER_4, IconsTinter.SHAPE_M3_CLOVER_8,
+                IconsTinter.SHAPE_M3_BURST, IconsTinter.SHAPE_M3_SOFT_BURST, IconsTinter.SHAPE_M3_BOOM, IconsTinter.SHAPE_M3_SOFT_BOOM,
+                IconsTinter.SHAPE_M3_FLOWER, IconsTinter.SHAPE_M3_PUFFY, IconsTinter.SHAPE_M3_PUFFY_DIAMOND, IconsTinter.SHAPE_M3_PIXEL_CIRCLE,
+                IconsTinter.SHAPE_M3_PIXEL_TRIANGLE, IconsTinter.SHAPE_M3_BUN, IconsTinter.SHAPE_M3_HEART
         };
 
         // Current shape preview row (card selector with thumbnail, title and arrow)
@@ -1734,7 +1740,7 @@ public class Main extends Activity {
         }
         final TextView currentShapeTitle = Ui.text(this, initialShapeName, 14f, Ui.TEXT);
         currentShapeTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        final TextView shapeSub = Ui.text(this, "24 M3 Expressive формы · Нажмите для выбора", 11.5f, Ui.MUTED);
+        final TextView shapeSub = Ui.text(this, "35 официальных Material 3 форм · Нажмите для выбора", 11.5f, Ui.MUTED);
         shapeInfo.addView(currentShapeTitle);
         shapeInfo.addView(shapeSub);
         shapePickerBtn.addView(shapeInfo, new LinearLayout.LayoutParams(0, -2, 1f));
