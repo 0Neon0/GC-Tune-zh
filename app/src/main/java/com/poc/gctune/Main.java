@@ -1680,7 +1680,7 @@ public class Main extends Activity {
         });
         styleCard.addView(bgRow, bgRowLp);
 
-        sbIconScale = addSlider(styleCard, "Масштаб всей иконки (на экране)", 30, 250, iconsScale, new IntSetter() {
+        sbIconScale = addSlider(styleCard, "Масштаб всей иконки (на экране)", 30, 300, iconsScale, new IntSetter() {
             @Override public void set(int v) { iconsScale = v; }
         });
         sbFgScale = addSlider(styleCard, "Масштаб рисунка внутри", 15, 150, iconsFgScale, new IntSetter() {
@@ -2353,15 +2353,18 @@ public class Main extends Activity {
         // name "launcher" silently matches nothing (tar exits 0, extracts 0 files)
         sb.append("tar -xzf /sdcard/Download/gctune/origin_theme_template.tgz -C $TD ./launcher 2>/dev/null; ");
         sb.append("fi; ");
-        // Overwrite launcher mask and border with the newly generated shape masks
+        // Overwrite launcher mask and border with the unconstrained masks
         sb.append("if [ -d \"$SRC\"/launcher ]; then ");
         sb.append("cp \"$SRC\"/launcher/icon_border.png $TD/launcher/icon_border.png 2>/dev/null; ");
         sb.append("cp \"$SRC\"/launcher/icon_border.png $TD/launcher/icon_border_two.png 2>/dev/null; ");
+        sb.append("for bf in $TD/launcher/icon_border*.png; do ");
+        sb.append("[ -f \"$bf\" ] && cp \"$SRC\"/launcher/icon_border.png \"$bf\" 2>/dev/null; ");
+        sb.append("done; ");
         sb.append("cp \"$SRC\"/launcher/icon_mask.png $TD/launcher/icon_mask.png 2>/dev/null; ");
         sb.append("cp \"$SRC\"/launcher/icon_mask.png $TD/launcher/icon_mask_two.png 2>/dev/null; ");
         sb.append("cp \"$SRC\"/launcher/icon_mask.png $TD/launcher/icon_mask_three.png 2>/dev/null; ");
-        sb.append("for mf in $TD/launcher/icon_mask_*_1x1.png; do ");
-        sb.append("[ -f \"$mf\" ] && cp \"$SRC\"/launcher/icon_mask_5x9.png \"$mf\" 2>/dev/null; ");
+        sb.append("for mf in $TD/launcher/icon_mask*.png; do ");
+        sb.append("[ -f \"$mf\" ] && cp \"$SRC\"/launcher/icon_mask.png \"$mf\" 2>/dev/null; ");
         sb.append("done; ");
         sb.append("for bg in $TD/launcher/icon_bg_*.png; do ");
         sb.append("[ -f \"$bg\" ] && cp \"$SRC\"/launcher/icon_bg_default.png \"$bg\" 2>/dev/null; ");

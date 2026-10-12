@@ -474,16 +474,23 @@ final class IconsTinter {
         desat = clamp(desat);
         lighten = clamp(lighten);
         strength = clamp(strength);
-        iconScale = Math.max(30, Math.min(250, iconScale));
+        iconScale = Math.max(30, Math.min(300, iconScale));
         fgScale = Math.max(15, Math.min(150, fgScale));
         radiusPct = clamp(radiusPct);
 
-        // Calculate physical canvas size based on iconScale. Base size is 192px.
-        // At 100%: 192px. At 200%: 384px. At 50%: 96px.
-        int canvasSize = Math.max(48, Math.round(SIZE * (iconScale / 100.0f)));
+        // Standard target icon dimension is 192px at 100%.
+        // To make the icon physically larger than the standard OriginOS cell on the desktop
+        // (so it can bleed/overlap neighbouring cells when scaled up > 100%),
+        // we scale the shape dimension directly:
+        float scaleFactor = iconScale / 100.0f;
+        int shapeDimension = Math.round(SIZE * scaleFactor);
 
-        // The background shape fills the canvasSize
-        RectF iconBounds = new RectF(0f, 0f, canvasSize, canvasSize);
+        // Ensure canvas has matching full size:
+        int canvasSize = Math.max(SIZE, shapeDimension);
+        float offset = (canvasSize - shapeDimension) / 2.0f;
+
+        // The background shape fills the shape dimension centered in canvasSize
+        RectF iconBounds = new RectF(offset, offset, offset + shapeDimension, offset + shapeDimension);
         Path shapePath = buildShapePath(shapeType, iconBounds, radiusPct);
 
         if (!bgEnabled) {
@@ -498,8 +505,8 @@ final class IconsTinter {
                 bbox.set(0, 0, canvasSize, canvasSize);
             }
 
-            // Scale tinted glyph according to fgScale inside the canvas
-            float targetDim = canvasSize * (fgScale / 100.0f);
+            // Scale tinted glyph according to fgScale inside the shape dimension
+            float targetDim = shapeDimension * (fgScale / 100.0f);
             float s = targetDim / Math.max(bbox.width(), bbox.height());
             float w = bbox.width() * s;
             float h = bbox.height() * s;
@@ -552,8 +559,8 @@ final class IconsTinter {
         if (layer != null) layer.recycle();
         if (tinted == null) return null;
 
-        // Foreground glyph safe zone inside the styled tile: scaled by fgScale
-        float glyphTarget = canvasSize * (fgScale / 100.0f);
+        // Foreground glyph safe zone inside the styled tile: scaled by fgScale relative to shapeDimension
+        float glyphTarget = shapeDimension * (fgScale / 100.0f);
         float s = glyphTarget / Math.max(bbox.width(), bbox.height());
         float w = bbox.width() * s;
         float h = bbox.height() * s;
@@ -719,11 +726,17 @@ final class IconsTinter {
     }
 
     /**
-     * Generates a monochrome mask bitmap (solid black inside shape, transparent outside)
-     * matching the system mask format (OriginOS expects black silhouette on transparent background).
+     * Generates an unconstrained launcher mask (solid black covering the full canvas).
+     * By filling the entire canvas with solid black (100% opacity), the OriginOS launcher
+     * does NOT apply its own hardware squircle/square clipping mask to the icon!
+     * The actual shape (Material 3 stars, flowers, hearts, circles, oversized scale)
+     * is already crisply and transparently rendered inside the PNG itself.
      */
     static Bitmap generateMask(int width, int height, int shapeType, int radiusPct, int iconScale) {
-        return generateBg(width, height, shapeType, radiusPct, iconScale, 0xFF000000);
+        Bitmap out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(out);
+        c.drawColor(0xFF000000);
+        return out;
     }
 
     /**
@@ -732,18 +745,11 @@ final class IconsTinter {
     static Bitmap generateBg(int width, int height, int shapeType, int radiusPct, int iconScale, int color) {
         Bitmap out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(out);
-        float scale = Math.max(30, Math.min(250, iconScale)) / 100.0f;
-        float baseSize = Math.min(width, height);
-        float shapeSize = baseSize * scale;
-        float left = (width - shapeSize) / 2f;
-        float top = (height - shapeSize) / 2f;
-        RectF rect = new RectF(left, top, left + shapeSize, top + shapeSize);
-        Path shapePath = buildShapePath(shapeType, rect, radiusPct);
-        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        p.setColor(color);
-        c.drawPath(shapePath, p);
+        // By default, provide a solid background matching color so unrendered legacy launcher components match
+        c.drawColor(color);
         return out;
     }
+
 
     /**
      * Generates a miniature shape thumbnail bitmap with outline and subtle fill for UI selectors.
