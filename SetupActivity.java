@@ -125,46 +125,51 @@ public class SetupActivity extends Activity {
         markLp.gravity = Gravity.CENTER_HORIZONTAL;
         root.addView(mark, markLp);
 
-        TextView title = Ui.label(this, "GC Tune", 24f, Ui.TEXT);
+        TextView title = Ui.label(this, "GC Tune", 28f, Ui.TEXT);
+        title.setLetterSpacing(-0.01f);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-2, -2);
         titleLp.gravity = Gravity.CENTER_HORIZONTAL;
-        titleLp.topMargin = Ui.dp(this, 14);
+        titleLp.topMargin = Ui.dp(this, 16);
         root.addView(title, titleLp);
 
         LinearLayout statusRow = Ui.row(this);
+        statusRow.setGravity(Gravity.CENTER_VERTICAL);
+        statusRow.setBackground(Ui.pillShape(this, Ui.SURFACE_HIGH, Ui.BORDER_SOFT, 1.2f));
+        statusRow.setPadding(Ui.dp(this, 12), Ui.dp(this, 6), Ui.dp(this, 14), Ui.dp(this, 6));
         statusDot = new ImageView(this);
         statusDot.setImageDrawable(iconDotOff);
         statusDot.setScaleType(ImageView.ScaleType.FIT_CENTER);
         LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(-2, -2);
-        dotLp.rightMargin = Ui.dp(this, 6);
+        dotLp.rightMargin = Ui.dp(this, 7);
         statusRow.addView(statusDot, dotLp);
-        statusText = Ui.text(this, "", 11f, Ui.MUTED);
+        statusText = Ui.text(this, "", 11.5f, Ui.MUTED);
         statusRow.addView(statusText);
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(-2, -2);
         statusLp.gravity = Gravity.CENTER_HORIZONTAL;
-        statusLp.topMargin = Ui.dp(this, 10);
+        statusLp.topMargin = Ui.dp(this, 12);
         root.addView(statusRow, statusLp);
 
         TextView path = Ui.text(this,
-                "Ультраигровой режим → Поддерживаемые игры → Другое → GC Tune", 11f, Ui.MUTED);
+                "Ультраигровой режим → Поддерживаемые игры → Другое → GC Tune", 11.5f, Ui.MUTED);
         path.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams pathLp = new LinearLayout.LayoutParams(-2, -2);
         pathLp.gravity = Gravity.CENTER_HORIZONTAL;
-        pathLp.topMargin = Ui.dp(this, 6);
-        pathLp.bottomMargin = Ui.dp(this, 28);
+        pathLp.topMargin = Ui.dp(this, 8);
+        pathLp.bottomMargin = Ui.dp(this, 30);
         root.addView(path, pathLp);
 
         root.addView(settingsButton());
 
-        TextView later = Ui.label(this, "Открыть GC Tune", 13f, Ui.MUTED);
+        TextView later = Ui.label(this, "Открыть GC Tune", 13.5f, Ui.MUTED);
         later.setGravity(Gravity.CENTER);
-        later.setPadding(Ui.dp(this, 16), Ui.dp(this, 14), Ui.dp(this, 16), Ui.dp(this, 6));
+        later.setPadding(Ui.dp(this, 20), Ui.dp(this, 12), Ui.dp(this, 20), Ui.dp(this, 12));
+        later.setBackground(Ui.pillRipple(this, 0x00000000, 0x306CE5A8));
         LinearLayout.LayoutParams laterLp = new LinearLayout.LayoutParams(-2, -2);
         laterLp.gravity = Gravity.CENTER_HORIZONTAL;
-        laterLp.topMargin = Ui.dp(this, 10);
+        laterLp.topMargin = Ui.dp(this, 12);
         later.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { goMain(); }
+            @Override public void onClick(View v) { Ui.tap(v); goMain(); }
         });
         root.addView(later, laterLp);
 
@@ -176,21 +181,22 @@ public class SetupActivity extends Activity {
     private View settingsButton() {
         LinearLayout btn = Ui.row(this);
         btn.setGravity(Gravity.CENTER);
-        btn.setBackground(Ui.pressable(this, Ui.PRIMARY, Ui.PRIMARY_PRESSED, 16f));
-        btn.setPadding(Ui.dp(this, 20), Ui.dp(this, 13), Ui.dp(this, 16), Ui.dp(this, 13));
+        btn.setBackground(Ui.pillRipple(this, Ui.PRIMARY, 0x40FFFFFF));
+        btn.setPadding(Ui.dp(this, 22), Ui.dp(this, 14), Ui.dp(this, 18), Ui.dp(this, 14));
+        btn.setElevation(Ui.dp(this, 3));
 
-        TextView t = Ui.label(this, "Поддерживаемые игры", 14f, Ui.ACCENT);
+        TextView t = Ui.label(this, "Поддерживаемые игры", 14.5f, Ui.ACCENT);
         btn.addView(t);
 
         ImageView chevron = new ImageView(this);
-        chevron.setImageDrawable(M3Icons.chevron(Ui.ACCENT, Ui.dp(this, 17)));
+        chevron.setImageDrawable(M3Icons.chevron(Ui.ACCENT, Ui.dp(this, 18)));
         chevron.setScaleType(ImageView.ScaleType.FIT_CENTER);
         LinearLayout.LayoutParams chLp = new LinearLayout.LayoutParams(-2, -2);
         chLp.leftMargin = Ui.dp(this, 8);
         btn.addView(chevron, chLp);
 
         btn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { openGameSettings(); }
+            @Override public void onClick(View v) { Ui.tap(v); openGameSettings(); }
         });
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);

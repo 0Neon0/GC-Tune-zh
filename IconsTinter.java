@@ -50,43 +50,257 @@ final class IconsTinter {
         return compose(icon, tint, desat, lighten, strength, false, 0, 100, 0);
     }
 
+    // Shape presets (Material 3 Expressive Collection)
+    static final int SHAPE_ROUNDED = 0;   // Rounded rect (controlled by radiusPct)
+    static final int SHAPE_SQUIRCLE = 1;  // Smooth squircle (continuous curve)
+    static final int SHAPE_CIRCLE = 2;    // Full Circle
+    static final int SHAPE_TEARDROP = 3;  // Teardrop (rounded top + left, point bottom-right)
+    static final int SHAPE_HEXAGON = 4;   // Rounded Hexagon
+    static final int SHAPE_OCTAGON = 5;   // Rounded Octagon
+    static final int SHAPE_STAR = 6;      // Rounded Flower / Star
+    static final int SHAPE_PEBBLE = 7;    // Asymmetric smooth pebble
+    static final int SHAPE_PENTAGON = 8;  // M3 Rounded Pentagon
+    static final int SHAPE_DIAMOND = 9;   // M3 Smooth Rhombus / Diamond
+    static final int SHAPE_CLOVER = 10;   // M3 4-Leaf Clover
+    static final int SHAPE_ARCH = 11;     // M3 Architectural Arch (pill top, flat bottom)
+    static final int SHAPE_SUNBURST = 12; // M3 Sunny / 8-pointed Badge
+
     /**
-     * Full renderer.
+     * Builds a geometric Path for the icon background tile or mask within the given rectangle.
+     */
+    static Path buildShapePath(int shapeType, RectF rect, float radiusPct) {
+        Path p = new Path();
+        float w = rect.width();
+        float h = rect.height();
+        float size = Math.min(w, h);
+        float r = size * (radiusPct / 100.0f) / 2.0f;
+        float cx = rect.centerX();
+        float cy = rect.centerY();
+
+        switch (shapeType) {
+            case SHAPE_CIRCLE:
+                p.addCircle(cx, cy, size / 2f, Path.Direction.CW);
+                break;
+
+            case SHAPE_SQUIRCLE: {
+                // True superellipse / smooth squircle approximation using cubic beziers
+                float half = size / 2f;
+                float c = half * 0.94f; // control point pull
+                p.moveTo(cx, cy - half);
+                p.cubicTo(cx + c, cy - half, cx + half, cy - c, cx + half, cy);
+                p.cubicTo(cx + half, cy + c, cx + c, cy + half, cx, cy + half);
+                p.cubicTo(cx - c, cy + half, cx - half, cy + c, cx - half, cy);
+                p.cubicTo(cx - half, cy - c, cx - c, cy - half, cx, cy - half);
+                p.close();
+                break;
+            }
+
+            case SHAPE_TEARDROP: {
+                float[] radii = new float[]{
+                        r, r,
+                        r, r,
+                        Math.min(r, size * 0.15f), Math.min(r, size * 0.15f), // sharper bottom-right
+                        r, r
+                };
+                p.addRoundRect(rect, radii, Path.Direction.CW);
+                break;
+            }
+
+            case SHAPE_HEXAGON: {
+                float rad = size / 2f;
+                float cr = Math.max(2f, Math.min(rad * 0.35f, r));
+                p = createRoundedPolygon(cx, cy, rad, 6, 0f, cr);
+                break;
+            }
+
+            case SHAPE_OCTAGON: {
+                float rad = size / 2f;
+                float cr = Math.max(2f, Math.min(rad * 0.35f, r));
+                p = createRoundedPolygon(cx, cy, rad, 8, 22.5f, cr);
+                break;
+            }
+
+            case SHAPE_STAR: {
+                // 12-lobed flower / badge
+                float rOuter = size / 2f;
+                float rInner = size * 0.40f;
+                int points = 12;
+                p = createFlowerBadge(cx, cy, rOuter, rInner, points);
+                break;
+            }
+
+            case SHAPE_PEBBLE: {
+                // Organic asymmetric pebble
+                float[] radii = new float[]{
+                        size * 0.45f, size * 0.45f,
+                        size * 0.30f, size * 0.30f,
+                        size * 0.48f, size * 0.48f,
+                        size * 0.25f, size * 0.25f
+                };
+                p.addRoundRect(rect, radii, Path.Direction.CW);
+                break;
+            }
+
+            case SHAPE_PENTAGON: {
+                float rad = size / 2f;
+                float cr = Math.max(2f, Math.min(rad * 0.35f, r));
+                p = createRoundedPolygon(cx, cy, rad, 5, -18f, cr);
+                break;
+            }
+
+            case SHAPE_DIAMOND: {
+                float rad = size / 2f;
+                float cr = Math.max(2f, Math.min(rad * 0.35f, r));
+                p = createRoundedPolygon(cx, cy, rad, 4, 0f, cr);
+                break;
+            }
+
+            case SHAPE_CLOVER: {
+                // M3 4-Leaf Clover badge
+                p = createFlowerBadge(cx, cy, size / 2f, size * 0.33f, 4);
+                break;
+            }
+
+            case SHAPE_SUNBURST: {
+                // M3 8-pointed sunny burst badge
+                p = createFlowerBadge(cx, cy, size / 2f, size * 0.40f, 8);
+                break;
+            }
+
+            case SHAPE_ARCH: {
+                // Material 3 Architectural Arch (pill rounded top, subtle rounded bottom)
+                float[] radii = new float[]{
+                        size / 2f, size / 2f,
+                        size / 2f, size / 2f,
+                        Math.min(r, size * 0.15f), Math.min(r, size * 0.15f),
+                        Math.min(r, size * 0.15f), Math.min(r, size * 0.15f)
+                };
+                p.addRoundRect(rect, radii, Path.Direction.CW);
+                break;
+            }
+
+            case SHAPE_ROUNDED:
+            default:
+                p.addRoundRect(rect, r, r, Path.Direction.CW);
+                break;
+        }
+        return p;
+    }
+
+    static Path buildShapePath(int shapeType, float size, float radiusPct) {
+        return buildShapePath(shapeType, new RectF(0f, 0f, size, size), radiusPct);
+    }
+
+    private static Path createRoundedPolygon(float cx, float cy, float radius, int sides, float rotationDeg, float cornerRadius) {
+        Path path = new Path();
+        double rot = Math.toRadians(rotationDeg);
+        float[][] pts = new float[sides][2];
+        for (int i = 0; i < sides; i++) {
+            double angle = rot + 2.0 * Math.PI * i / sides;
+            pts[i][0] = (float) (cx + radius * Math.cos(angle));
+            pts[i][1] = (float) (cy + radius * Math.sin(angle));
+        }
+        // Round the corners
+        for (int i = 0; i < sides; i++) {
+            int prev = (i + sides - 1) % sides;
+            int next = (i + 1) % sides;
+            float dx1 = pts[i][0] - pts[prev][0];
+            float dy1 = pts[i][1] - pts[prev][1];
+            float len1 = (float) Math.hypot(dx1, dy1);
+            float dx2 = pts[next][0] - pts[i][0];
+            float dy2 = pts[next][1] - pts[i][1];
+            float len2 = (float) Math.hypot(dx2, dy2);
+
+            float t1 = Math.min(cornerRadius, len1 * 0.45f);
+            float t2 = Math.min(cornerRadius, len2 * 0.45f);
+
+            float p1x = pts[i][0] - (dx1 / len1) * t1;
+            float p1y = pts[i][1] - (dy1 / len1) * t1;
+            float p2x = pts[i][0] + (dx2 / len2) * t2;
+            float p2y = pts[i][1] + (dy2 / len2) * t2;
+
+            if (i == 0) {
+                path.moveTo(p1x, p1y);
+            } else {
+                path.lineTo(p1x, p1y);
+            }
+            path.quadTo(pts[i][0], pts[i][1], p2x, p2y);
+        }
+        path.close();
+        return path;
+    }
+
+    private static Path createFlowerBadge(float cx, float cy, float rOuter, float rInner, int points) {
+        Path path = new Path();
+        int totalPts = points * 2;
+        for (int i = 0; i < totalPts; i++) {
+            double angle = 2.0 * Math.PI * i / totalPts;
+            float r = (i % 2 == 0) ? rOuter : rInner;
+            float x = (float) (cx + r * Math.cos(angle));
+            float y = (float) (cy + r * Math.sin(angle));
+            if (i == 0) path.moveTo(x, y);
+            else path.lineTo(x, y);
+        }
+        path.close();
+        return path;
+    }
+
+    /**
+     * Full renderer with custom shape control.
      *
-     * @param desat     0 = keep original colors, 100 = full grayscale (Origin default)
-     * @param lighten   0 = as tinted, 100 = blend fully toward white
-     * @param strength  0 = original icon, 100 = fully tinted icon
-     * @param bgEnabled draw a rounded background tile under the icon
-     * @param bgColor   background tile color
-     * @param fgScale   glyph size in percent (100 = adaptive safe zone, 66.7% of the tile)
-     * @param radiusPct corner radius in percent of the tile (0..50, 50 = circle)
+     * @param fgScale   glyph size in percent (15..200: from miniature 15% to massive oversized 200%)
+     * @param shapeType SHAPE_ROUNDED, SHAPE_SQUIRCLE, SHAPE_CIRCLE, etc.
      */
     static Bitmap compose(Drawable icon, int tint, int desat, int lighten, int strength,
-                          boolean bgEnabled, int bgColor, int fgScale, int radiusPct) {
+                          boolean bgEnabled, int bgColor, int fgScale, int radiusPct, int shapeType) {
         if (icon == null) return null;
         desat = clamp(desat);
         lighten = clamp(lighten);
         strength = clamp(strength);
-        fgScale = Math.max(20, Math.min(160, fgScale));
+        // Ultra-wide scaling support: 15% (tiny minimal) to 200% (oversized full-canvas badge)
+        fgScale = Math.max(15, Math.min(200, fgScale));
         radiusPct = clamp(radiusPct);
 
+        float iconSize = SIZE * (fgScale / 100.0f);
+        float offset = (SIZE - iconSize) / 2.0f;
+        RectF iconBounds = new RectF(offset, offset, offset + iconSize, offset + iconSize);
+        Path shapePath = buildShapePath(shapeType, iconBounds, radiusPct);
+
         if (!bgEnabled) {
-            // Origin pipeline + the same slider: 100% = content bbox equals
-            // the full canvas (the launcher scales the PNG as a whole, so the
-            // bbox is the only thing that changes the visible size)
             Bitmap layer = drawIcon(icon, 0f, 0f, SIZE, SIZE);
             if (layer == null) return null;
             Bitmap tinted = tintBitmap(layer, tint, desat, lighten, strength);
             layer.recycle();
             if (tinted == null) return null;
+
             Rect bbox = new Rect();
-            if (!alphaBBox(tinted, bbox, 10)) return tinted;
-            Bitmap out = fitTo(tinted, bbox, SIZE * fgScale / 100.0f);
+            if (!alphaBBox(tinted, bbox, 10)) {
+                bbox.set(0, 0, SIZE, SIZE);
+            }
+
+            // Scale tinted glyph to fit nicely inside iconBounds
+            float s = iconSize / Math.max(bbox.width(), bbox.height());
+            float w = bbox.width() * s;
+            float h = bbox.height() * s;
+            RectF dst = new RectF(SIZE / 2f - w / 2f, SIZE / 2f - h / 2f,
+                    SIZE / 2f + w / 2f, SIZE / 2f + h / 2f);
+
+            Bitmap out = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888);
+            try {
+                Canvas c = new Canvas(out);
+                c.clipPath(shapePath);
+                Paint gp = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+                c.drawBitmap(tinted, bbox, dst, gp);
+            } catch (Throwable t) {
+                out.recycle();
+                tinted.recycle();
+                return null;
+            }
             tinted.recycle();
             return out;
         }
 
-        // ---- compose layer: full-canvas rounded tile + normalised glyph ----
+        // ---- compose layer: styled background tile + foreground icon ----
         Drawable fgSource = icon;
         if (icon instanceof AdaptiveIconDrawable) {
             try {
@@ -99,46 +313,27 @@ final class IconsTinter {
         Bitmap layer = drawIcon(fgSource, 0f, 0f, SIZE, SIZE);
         Rect bbox = new Rect();
         boolean ok = layer != null && alphaBBox(layer, bbox, 10)
-                && bbox.width() >= SIZE * 0.2f && bbox.height() >= SIZE * 0.2f;
+                && bbox.width() >= SIZE * 0.15f && bbox.height() >= SIZE * 0.15f;
         if (!ok && fgSource != icon) {
-            // empty/negligible foreground (web shortcuts, bg-only adaptive
-            // icons) — fall back to the whole drawable
             if (layer != null) layer.recycle();
             layer = drawIcon(icon, 0f, 0f, SIZE, SIZE);
             ok = layer != null && alphaBBox(layer, bbox, 10)
-                    && bbox.width() >= SIZE * 0.12f && bbox.height() >= SIZE * 0.12f;
+                    && bbox.width() >= SIZE * 0.10f && bbox.height() >= SIZE * 0.10f;
         }
         if (!ok) {
-            // never emit an empty colored square — plain pipeline instead,
-            // with the same size normalisation so it matches the rest
             if (layer != null) layer.recycle();
-            Bitmap plain = drawIcon(icon, 0f, 0f, SIZE, SIZE);
-            if (plain == null) return null;
-            Bitmap plainTinted = tintBitmap(plain, tint, desat, lighten, strength);
-            plain.recycle();
-            if (plainTinted == null) return null;
-            Rect plainBox = new Rect();
-            if (!alphaBBox(plainTinted, plainBox, 10)) return plainTinted;
-            Bitmap plainOut = fitTo(plainTinted, plainBox,
-                    SIZE * 0.667f * fgScale / 100.0f);
-            plainTinted.recycle();
-            return plainOut;
+            layer = drawIcon(icon, 0f, 0f, SIZE, SIZE);
+            if (layer == null) return null;
+            bbox.set(0, 0, SIZE, SIZE);
         }
 
         Bitmap tinted = tintBitmap(layer, tint, desat, lighten, strength);
-        layer.recycle();
+        if (layer != null) layer.recycle();
         if (tinted == null) return null;
 
-        RectF tile = new RectF(0f, 0f, SIZE, SIZE);
-        float radius = SIZE * (radiusPct / 100.0f) / 2.0f;
-
-        // Uniform, slider-controlled glyph: fit the content bbox to the tile
-        // fraction from the "Размер иконки" slider (100% = adaptive safe zone,
-        // 66.7% of the tile). Every source type goes through the same fit, so
-        // the size is both uniform and actually reacts to the slider — the old
-        // full-bleed shortcut ignored it and stretched the artwork to the edge.
-        float target = SIZE * 0.667f * fgScale / 100.0f;
-        float s = target / Math.max(bbox.width(), bbox.height());
+        // Foreground glyph safe zone inside the styled tile (66.7% of tile)
+        float glyphTarget = iconSize * 0.667f;
+        float s = glyphTarget / Math.max(bbox.width(), bbox.height());
         float w = bbox.width() * s;
         float h = bbox.height() * s;
         RectF dst = new RectF(SIZE / 2f - w / 2f, SIZE / 2f - h / 2f,
@@ -149,10 +344,8 @@ final class IconsTinter {
             Canvas c = new Canvas(out);
             Paint bp = new Paint(Paint.ANTI_ALIAS_FLAG);
             bp.setColor(bgColor);
-            c.drawRoundRect(tile, radius, radius, bp);
-            Path clip = new Path();
-            clip.addRoundRect(tile, radius, radius, Path.Direction.CW);
-            c.clipPath(clip);
+            c.drawPath(shapePath, bp);
+            c.clipPath(shapePath);
             Paint gp = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
             c.drawBitmap(tinted, bbox, dst, gp);
         } catch (Throwable t) {
@@ -162,6 +355,12 @@ final class IconsTinter {
         }
         tinted.recycle();
         return out;
+    }
+
+    /** Compatibility overload for previous callers */
+    static Bitmap compose(Drawable icon, int tint, int desat, int lighten, int strength,
+                          boolean bgEnabled, int bgColor, int fgScale, int radiusPct) {
+        return compose(icon, tint, desat, lighten, strength, bgEnabled, bgColor, fgScale, radiusPct, SHAPE_ROUNDED);
     }
 
     // ------------------------------------------------------------------ pipeline
@@ -285,6 +484,32 @@ final class IconsTinter {
                 SIZE / 2f + w / 2f, SIZE / 2f + h / 2f);
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         c.drawBitmap(src, bbox, dst, p);
+        return out;
+    }
+
+    /**
+     * Generates a monochrome mask bitmap (solid black inside shape, transparent outside)
+     * matching the system mask format (OriginOS expects black silhouette on transparent background).
+     */
+    static Bitmap generateMask(int width, int height, int shapeType, int radiusPct, int fgScale) {
+        return generateBg(width, height, shapeType, radiusPct, fgScale, 0xFF000000);
+    }
+
+    /**
+     * Generates a shape-fitted background tile of given color.
+     */
+    static Bitmap generateBg(int width, int height, int shapeType, int radiusPct, int fgScale, int color) {
+        Bitmap out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(out);
+        float scale = Math.max(15, Math.min(200, fgScale)) / 100.0f;
+        float size = Math.min(width, height) * scale;
+        float offsetW = (width - size) / 2.0f;
+        float offsetH = (height - size) / 2.0f;
+        RectF rect = new RectF(offsetW, offsetH, offsetW + size, offsetH + size);
+        Path shapePath = buildShapePath(shapeType, rect, radiusPct);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setColor(color);
+        c.drawPath(shapePath, p);
         return out;
     }
 

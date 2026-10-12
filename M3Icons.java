@@ -258,4 +258,38 @@ final class M3Icons {
     static Icon dotHollow(int color, int sizePx) {
         return new Icon(color, 3f, sizePx).stroke(circle(12f, 12f, 5.6f));
     }
+
+    /** Three dots horizontal ("Прочее" tab). */
+    static Icon more(int color, int sizePx) {
+        return new Icon(color, 0f, sizePx)
+                .fill(circle(5.6f, 12f, 2f))
+                .fill(circle(12f, 12f, 2f))
+                .fill(circle(18.4f, 12f, 2f));
+    }
+
+    /** Font "T" icon. */
+    static Icon font(int color, int sizePx) {
+        return new Icon(color, 2.2f, sizePx)
+                .stroke(line(5.0f, 5.0f, 19.0f, 5.0f))
+                .stroke(line(12.0f, 5.0f, 12.0f, 19.5f))
+                .stroke(line(8.5f, 19.5f, 15.5f, 19.5f));
+    }
+
+    /** Palette/brush customization icon. */
+    static Icon brush(int color, int sizePx) {
+        return palette(color, sizePx);
+    }
+
+    /** Shield / protection icon. */
+    static Icon shield(int color, int sizePx) {
+        return new Icon(color, 1.8f, sizePx)
+                .stroke(poly(new float[]{
+                        12f, 3.6f,
+                        19.2f, 6.4f,
+                        19.2f, 13.2f,
+                        12f, 20.4f,
+                        4.8f, 13.2f,
+                        4.8f, 6.4f
+                }, 2.2f, true));
+    }
 }

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.poc.gctune"
-    android:versionCode="9"
+    android:versionCode="10"
     android:versionName="1.0">
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="30" />
     <!-- QUERY_ALL_PACKAGES: without it Android hides third-party launchers apps
@@ -27,8 +27,22 @@
             </intent-filter>
         </activity>
         <activity android:name=".Main" android:exported="true" />
+        <activity android:name=".ThemeActivity" android:exported="false" />
+        <activity android:name=".IconsActivity" android:exported="false" />
+        <activity android:name=".MiscActivity" android:exported="false" />
+        <activity android:name=".FontActivity" android:exported="false" />
         <activity android:name=".PrefsActivity" android:exported="false" />
         <!-- owns layer + ACK receiver + wake retries while a command is pending -->
         <service android:name=".ChannelService" android:exported="false" />
+        <!-- "Неубиваемый фон": sticky foreground service (see KeepAliveService) -->
+        <service android:name=".KeepAliveService" android:exported="false" />
+        <!-- self-rescheduling watchdog alarm for the keep-alive chain -->
+        <receiver android:name=".KeepAliveReceiver" android:exported="false" />
+        <!-- ADB bridge: exported on purpose, but BridgeProvider.call() rejects
+             every uid except 2000 (adb shell) and 0 (root) per transaction -->
+        <provider
+            android:name=".BridgeProvider"
+            android:authorities="com.poc.gctune.bridge"
+            android:exported="true" />
     </application>
 </manifest>

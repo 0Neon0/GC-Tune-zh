@@ -4,6 +4,7 @@ import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.ContentValues;
@@ -57,6 +58,8 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -78,19 +81,34 @@ public class Main extends Activity {
      * Bootstrap of the uid1000 watcher, prepended to every payload while the
      * daemon toggle is on. No-op when a watcher is already alive (orphaned
      * watcher = ppid 1, "gctw" in cmdline). The watcher blocks on
-     * `logcat -s GCTune:I` - idle cost is exactly zero - and on a WAKE line
-     * runs `dumpsys SurfaceFlinger --latency "<our layer>"`, which re-parses
-     * the layer name and executes the payload as uid1000, byte identical to
-     * the Game Cube panel path. Lives until reboot; the next panel pull after
-     * a reboot respawns it.
+     * `logcat -T 1 -s GCTune:I` - idle cost is exactly zero - and on a WAKE
+     * line runs `dumpsys SurfaceFlinger --latency "<our layer>"`, which
+     * re-parses the layer name and executes the payload as uid1000, byte
+     * identical to the Game Cube panel path. Lives until reboot; the next
+     * panel pull after a reboot respawns it.
      *
-     * Both branches spawn without post-hoc killing: the spawned program waits
-     * 0.3s, then the lowest gctw pid wins - a racing twin (two panel execs
-     * seeing no watcher at once) simply exits before starting its loop, so
-     * exactly one watcher reaches the pipeline. Transient exec-chain lines
-     * (`--latency com.poc...`) are filtered out so the sh/dumpsys carrying
-     * the payload text are never counted; ps prints argv without the shell's
-     * quote characters, hence the quote-less pattern.
+     * Detection: /proc/[pid]/cmdline is scanned directly instead of ps ARGS -
+     * no column-width truncation, no dependency on the toybox ps version, the
+     * whole argv is read. A live watcher is any process whose cmdline carries
+     * the W marker but not the exec-chain marker X. X is spelled with an
+     * interrupted double quote (`--""latency com.poc`) so the literal string
+     * `--latency com.poc` never appears in our own cmdline: the daemon
+     * recognises itself by W, correctly excludes the sh/dumpsys exec chain
+     * (whose argv really does contain `--latency com.poc.gctune/x...`), and
+     * the detection never self-collides.
+     *
+     * Spawn race: each candidate waits 0.3s (so a racing twin's exec is
+     * already visible in /proc), then only the lowest gctw pid survives -
+     * exit 0 if someone older exists. Pids are handed out in spawn order, so
+     * the older candidate is always the smaller number and exactly one
+     * watcher reaches the pipeline.
+     *
+     * Read loop: `logcat -T 1` starts at the tail of the buffer, so stale
+     * WAKE lines are never replayed on (re)start. The dumpsys re-exec is put
+     * into the background, so a hung dumpsys cannot stall the read loop or
+     * block the pipe (SIGPIPE/backpressure). If logcat itself dies (chatty
+     * trim, logd restart) the loop sleeps 5s before re-attaching - no busy
+     * spin burning CPU.
      *
      * Note: this string sits inside the layer name, i.e. inside the $( ... )
      * block that FpsManager expands within double quotes. The shell parses
@@ -98,25 +116,41 @@ public class Main extends Activity {
      * command itself still goes through executeCurrentCommand's " -> ' pass.
      */
     private static final String DAEMON_BOOT =
-            "if ps -A -o PPID,ARGS 2>/dev/null|grep \"[g]ctw\"|grep -vq -- \"--latency com.poc\"; then :; "
-            + "else setsid sh -c 'W=gctw;sleep 0.3;"
-            + "w=$(ps -A -o PID,ARGS 2>/dev/null|grep \"[g]ctw\"|grep -v -- \"--latency com.poc\""
-            + "|awk \"{print \\$1}\"|sort -n|head -n 1);"
-            + "[ -n \"$w\" ]&&[ \"$w\" != \"$$\" ]&&exit 0;"
-            + "while :;do logcat -s GCTune:I 2>/dev/null"
-            + "|while IFS= read -r l;do case $l in *WAKE*)"
-            + "n=$(dumpsys SurfaceFlinger --list 2>/dev/null|grep -m1 com.poc.gctune/x);"
-            + "[ -n \"$n\" ]&&sh -c \"dumpsys SurfaceFlinger --latency \\\"$n\\\"\";;"
-            + "esac;done;done' >/dev/null 2>&1 </dev/null & fi;";
+            "W=gctw;P=/data/bbkcore/theme/.gctw.pid;ex=0;"
+            // Single-instance check via lock file ONLY - no /proc cmdline scan.
+            // Scanning /proc was fatal: the launching shell's own cmdline
+            // contains "W=gctw" (the payload text itself), so ex was always 1
+            // and setsid never ran. Toybox sh has no $PPID either, so any
+            // self-PID trickery fails. Lock file is the only reliable way:
+            // if the recorded PID is still alive, the daemon exists.
+            + "[ -f $P ]&&{ o=$(cat $P 2>/dev/null);"
+            + "[ -n \"$o\" ]&&[ -d /proc/$o ]&&ex=1; };"
+            + "if [ $ex = 1 ];then :;else setsid sh -c 'W=gctw;P=/data/bbkcore/theme/.gctw.pid;"
+            // Daemon owns the lock: write our own real PID ($$ is correct here -
+            // this shell IS the daemon main loop) before entering the loop.
+            + "echo $$ >$P 2>/dev/null;"
+            // Whitelist GC Tune in Doze battery whitelist on daemon startup
+            + "cmd deviceidle whitelist +com.poc.gctune >/dev/null 2>&1;"
+            + "cmd appops set com.poc.gctune RUN_IN_BACKGROUND allow >/dev/null 2>&1;"
+            + "cmd appops set com.poc.gctune START_FOREGROUND allow >/dev/null 2>&1;"
+            + "while :;do logcat -T 1 -s GCTune:I 2>/dev/null"
+            + "|while IFS= read -r x;do case $x in *WAKE*)"
+            + "n=$(settings get secure gc_tune_cmd 2>/dev/null);"
+            + "[ -n \"$n\" ]&&[ \"$n\" != null ]&&sh -c \"$n\" </dev/null &;;"
+            + "esac;done;sleep 5;done' >/dev/null 2>&1 </dev/null & fi;";
     private static final String BENIGN_TITLE = "GC Tune";
     private static final int REQ_IMPORT_FILE = 2001;
     private static final int REQ_PICK_ITZ = 2002;
+    private static final int REQ_PICK_FONT = 2003;
     private static final int RC_UNKNOWN = -999;
 
     /** Staging location of the picked .itz (public Download/gctune/theme.itz first). */
     private static final String STAGE_NAME = "theme.itz";
     private static final String STAGE_DIR = "gctune";
-    private static final float NAV_H_DP = 62f;
+    private static final String FONT_STAGE_NAME = "font.ttf";
+    private static final String FONT_STAGE_DIR = "gctune";
+    /** Real nav bar height: divider 1 + row (7 + item 51 + 9) = 68dp. */
+    private static final float NAV_H_DP = 68f;
 
     /** Appended by the payload after the user command; travels inside the blob. */
     private static final String RC_MARK = "__RC__";
@@ -130,27 +164,63 @@ public class Main extends Activity {
 
     private ImageView statusDot;
     private TextView statusText;
+    private ObjectAnimator dotPulse;
     private EditText cmdInput;
     private ImageView runBtn;
     private TextView logView;
     private ScrollView logScroll;
+    private ImageView jumpLogBtn;
 
     private M3Icons.Icon iconPlay, iconStop, iconDotOn, iconDotOff;
+    private ChannelService.Cb myCb;
 
-    private final List<Entry> entries = new ArrayList<>();
-    private int ackCounter = 1000000;
+    // The channel is singular: shared by Main and every section activity.
+    private static final List<Entry> entries = new ArrayList<>();
+    private static int ackCounter = 1000000;
     private int curAck = 0;
     private long deadline = 0;
-    private boolean busy = false;
+    private static boolean busy = false;
     private int timeoutSec = 30;
 
     // ------------------------------------------------------- navigation pages
-    private View shellPage, themePage, iconsPage, settingsPage;
+    static final int PAGE_SHELL = 0;
+    static final int PAGE_THEME = 1;
+    static final int PAGE_ICONS = 2;
+    static final int PAGE_SETTINGS = 3;
+    static final int PAGE_MISC = 4;
+    static final int PAGE_CUSTOM = 5;
+    static final int PAGE_FONT = 6;
+
+    private View shellPage, themePage, iconsPage, settingsPage, miscPage;
+    private View customPage, fontPage;
     private View pasteBtn;
-    private final View[] navItems = new View[4];
-    private final ImageView[] navIcons = new ImageView[4];
-    private final TextView[] navLabels = new TextView[4];
+    private final View[] navItems = new View[7];
+    private final ImageView[] navIcons = new ImageView[7];
+    private final TextView[] navLabels = new TextView[7];
+    private View navIndicator;
+    private boolean indicatorPlaced = false;
     private int page = 0;
+
+    /**
+     * Section activities (Тема/Иконки/Прочее/Шрифты) subclass Main and return
+     * their page index here; the full app (nav bar, console, hub) returns -1.
+     */
+    protected int sectionPage() {
+        return -1;
+    }
+
+    // ----------------------------------------------------------- misc page
+    private TextView miscKeepStatus, miscBridgeStatus, miscHardenStatus, miscHardenTarget;
+    private Switch keepSwitch, bridgeSwitch, targetSw;
+    private boolean miscRun = false;
+    /** What the pending misc command does: harden | unharden | freeze | unfreeze. */
+    private String miscAction = "harden";
+
+    // ----------------------------------------------------------- adb bridge
+    private volatile long bridgeAck = 0;
+    private volatile CountDownLatch bridgeLatch;
+    private volatile Bundle bridgeResult;
+    private volatile String bridgeLastCmd = "";
 
     // ---------------------------------------------------------------- theme
     private TextView themeFileText, themeStatusText;
@@ -162,6 +232,16 @@ public class Main extends Activity {
     private boolean staging = false;
     private boolean themeRun = false;
     private EditText settingsTimeout;
+
+    // ----------------------------------------------------------------- font
+    private TextView fontThemeFileText, fontThemeStatusText;
+    private View fontThemeHint, fontInstallBtn;
+    private ObjectAnimator fontHintPulse;
+    private String fontStagedPath;
+    private String fontStagedMd5;
+    private long fontStagedBytes;
+    private boolean fontStaging = false;
+    private boolean fontThemeRun = false;
 
     // ---------------------------------------------------------------- icons
     private TextView iconsStatusText;
@@ -182,6 +262,7 @@ public class Main extends Activity {
     private int iconsBgColor = 0xFFFFFFFF;
     private int iconsFgScale = 76;
     private int iconsRadius = 25;
+    private int iconsShape = IconsTinter.SHAPE_ROUNDED;
     private EditText iconsBgInput;
     private SeekBar sbDesat, sbLighten, sbStrength, sbFgScale, sbRadius;
     // icon-style flip state (see toggleIconsStyle)
@@ -200,6 +281,14 @@ public class Main extends Activity {
         int rc = RC_UNKNOWN;
         boolean pending;
         boolean failed;
+        long ts = System.currentTimeMillis();
+    }
+
+    private static final java.text.SimpleDateFormat LOG_TS =
+            new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US);
+
+    private static String stamp(long ts) {
+        synchronized (LOG_TS) { return LOG_TS.format(new java.util.Date(ts)); }
     }
 
     private final Runnable ticker = new Runnable() {
@@ -226,8 +315,10 @@ public class Main extends Activity {
         iconDotOn = M3Icons.dot(Ui.ACCENT, Ui.dp(this, 9));
         iconDotOff = M3Icons.dotHollow(Ui.MUTED, Ui.dp(this, 9));
 
-        // ACK delivery + retries live in ChannelService (survives backgrounding)
-        ChannelService.cb = new ChannelService.Cb() {
+        // ACK delivery + retries live in ChannelService (survives backgrounding).
+        // The holder is re-attached in onResume: whichever activity is on top
+        // processes results (shared entries make finishRun safe in any instance).
+        myCb = new ChannelService.Cb() {
             @Override
             public void onDone(final boolean ok, final String out) {
                 h.post(new Runnable() {
@@ -235,8 +326,16 @@ public class Main extends Activity {
                 });
             }
         };
+        ChannelService.cb = myCb;
 
         buildUi();
+        BridgeProvider.bridgeImpl = bridgeImpl;
+        // resume the keep-alive chain after a relaunch
+        if (prefs.getBoolean("keep_alive", false)) {
+            KeepAliveReceiver.schedule(this,
+                    System.currentTimeMillis() + KeepAliveReceiver.INTERVAL);
+            KeepAliveService.start(this);
+        }
         setWinTitle(BENIGN_TITLE);
         refreshStatus();
     }
@@ -244,6 +343,10 @@ public class Main extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        // the top activity owns the channel callbacks and the bridge entry
+        ChannelService.cb = myCb;
+        BridgeProvider.bridgeImpl = bridgeImpl;
+        renderLog();
         h.postDelayed(ticker, 400L);
     }
 
@@ -256,27 +359,53 @@ public class Main extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        ChannelService.cb = null;
+        if (ChannelService.cb == myCb) ChannelService.cb = null;
+        if (BridgeProvider.bridgeImpl == bridgeImpl) BridgeProvider.bridgeImpl = null;
         if (hintPulse != null) hintPulse.cancel();
+        if (fontHintPulse != null) fontHintPulse.cancel();
+        if (dotPulse != null) dotPulse.cancel();
     }
 
     // ------------------------------------------------------------------ UI
     private void buildUi() {
+        int section = sectionPage();
+        if (section != -1) {
+            // Standalone section activity: only its own page, no nav/console.
+            switch (section) {
+                case PAGE_THEME:
+                    themePage = buildThemePage();
+                    setContentView(themePage);
+                    break;
+                case PAGE_ICONS:
+                    iconsPage = buildIconsPage();
+                    setContentView(iconsPage);
+                    break;
+                case PAGE_MISC:
+                    miscPage = buildMiscPage();
+                    setContentView(miscPage);
+                    break;
+                case PAGE_FONT:
+                    fontPage = buildFontPage();
+                    setContentView(fontPage);
+                    break;
+                default:
+                    setContentView(new View(this));
+            }
+            return;
+        }
+
         FrameLayout frame = new FrameLayout(this);
         frame.setBackgroundColor(Ui.BG);
 
         shellPage = buildShellPage();
-        themePage = buildThemePage();
-        iconsPage = buildIconsPage();
+        customPage = buildCustomPage();
         settingsPage = buildSettingsPage();
 
         FrameLayout pages = new FrameLayout(this);
         pages.addView(shellPage, new FrameLayout.LayoutParams(-1, -1));
-        pages.addView(themePage, new FrameLayout.LayoutParams(-1, -1));
-        pages.addView(iconsPage, new FrameLayout.LayoutParams(-1, -1));
+        pages.addView(customPage, new FrameLayout.LayoutParams(-1, -1));
         pages.addView(settingsPage, new FrameLayout.LayoutParams(-1, -1));
-        themePage.setVisibility(View.GONE);
-        iconsPage.setVisibility(View.GONE);
+        customPage.setVisibility(View.GONE);
         settingsPage.setVisibility(View.GONE);
         FrameLayout.LayoutParams pagesLp = new FrameLayout.LayoutParams(-1, -1);
         pagesLp.bottomMargin = Ui.dp(this, NAV_H_DP);
@@ -286,15 +415,18 @@ public class Main extends Activity {
         FrameLayout.LayoutParams pasteLp =
                 new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END);
         pasteLp.rightMargin = Ui.dp(this, 20);
-        pasteLp.bottomMargin = Ui.dp(this, NAV_H_DP + 24);
+        pasteLp.bottomMargin = Ui.dp(this, NAV_H_DP + 20);
         frame.addView(pasteBtn, pasteLp);
 
         LinearLayout nav = navBar();
         FrameLayout.LayoutParams navLp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+        navLp.leftMargin = Ui.dp(this, 16);
+        navLp.rightMargin = Ui.dp(this, 16);
+        navLp.bottomMargin = Ui.dp(this, 14);
         frame.addView(nav, navLp);
 
         setContentView(frame);
-        switchPage(0);
+        switchPage(PAGE_SHELL);
     }
 
     /** Console tab: top bar + status + input + log. */
@@ -315,15 +447,19 @@ public class Main extends Activity {
     }
 
     private View pasteButton() {
-        TextView paste = Ui.label(this, "Вставить", 13f, Ui.ACCENT);
+        TextView paste = Ui.label(this, "Вставить", 13.5f, Ui.ACCENT);
         paste.setGravity(Gravity.CENTER);
         paste.setPadding(Ui.dp(this, 18), Ui.dp(this, 12), Ui.dp(this, 18), Ui.dp(this, 12));
-        paste.setBackground(Ui.pressable(this, Ui.PRIMARY, Ui.PRIMARY_PRESSED, 16f));
+        paste.setBackground(Ui.pillRipple(this, Ui.PRIMARY, 0x40FFFFFF));
         paste.setCompoundDrawablesWithIntrinsicBounds(
-                M3Icons.clipboard(Ui.ACCENT, Ui.dp(this, 17)), null, null, null);
+                M3Icons.clipboard(Ui.ACCENT, Ui.dp(this, 18)), null, null, null);
         paste.setCompoundDrawablePadding(Ui.dp(this, 8));
+        paste.setElevation(Ui.dp(this, 4));
         paste.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { pasteFromClipboard(); }
+            @Override public void onClick(View v) {
+                Ui.tap(v);
+                pasteFromClipboard();
+            }
         });
         return paste;
     }
@@ -331,79 +467,160 @@ public class Main extends Activity {
     // ------------------------------------------------------------- navigation
     private LinearLayout navBar() {
         LinearLayout wrap = Ui.col(this);
-        wrap.setBackgroundColor(Ui.SURFACE);
+        // M3 Expressive Floating Capsule Container: 30dp radius, subtle accent glow stroke
+        wrap.setBackground(Ui.shape(this, Ui.SURFACE, 30f, Ui.BORDER_SOFT, 1.2f));
+        wrap.setElevation(Ui.dp(this, 6));
 
-        View divider = new View(this);
-        divider.setBackgroundColor(Ui.BORDER_SOFT);
-        wrap.addView(divider, new LinearLayout.LayoutParams(-1, Ui.dp(this, 1)));
+        FrameLayout holder = new FrameLayout(this);
+
+        // M3 Expressive active-indicator pill, slides between items with capsule shape
+        navIndicator = new View(this);
+        navIndicator.setBackground(Ui.pillShape(this, Ui.PRIMARY, 0, 0));
+        navIndicator.setAlpha(0f);
+        holder.addView(navIndicator, new FrameLayout.LayoutParams(0, 0));
 
         LinearLayout row = Ui.row(this);
-        row.setPadding(Ui.dp(this, 10), Ui.dp(this, 7), Ui.dp(this, 10), Ui.dp(this, 9));
+        row.setPadding(Ui.dp(this, 8), Ui.dp(this, 6), Ui.dp(this, 8), Ui.dp(this, 6));
 
-        navItems[0] = navItem(0, M3Icons.terminal(Ui.MUTED, Ui.dp(this, 20)), "Shell");
-        navItems[1] = navItem(1, M3Icons.palette(Ui.MUTED, Ui.dp(this, 20)), "Тема");
-        navItems[2] = navItem(2, M3Icons.grid(Ui.MUTED, Ui.dp(this, 20)), "Иконки");
-        navItems[3] = navItem(3, M3Icons.tune(Ui.MUTED, Ui.dp(this, 20)), "Настройки");
-        for (View v : navItems) row.addView(v, new LinearLayout.LayoutParams(0, -2, 1f));
+        navItems[PAGE_SHELL] = navItem(PAGE_SHELL,
+                M3Icons.terminal(Ui.MUTED, Ui.dp(this, 22)), "Shell");
+        navItems[PAGE_CUSTOM] = navItem(PAGE_CUSTOM,
+                M3Icons.grid(Ui.MUTED, Ui.dp(this, 22)), "Кастомизация");
+        navItems[PAGE_SETTINGS] = navItem(PAGE_SETTINGS,
+                M3Icons.tune(Ui.MUTED, Ui.dp(this, 22)), "Настройки");
+        for (View v : navItems) {
+            if (v == null) continue;
+            row.addView(v, new LinearLayout.LayoutParams(0, -2, 1f));
+        }
+        holder.addView(row, new FrameLayout.LayoutParams(-1, -2));
 
-        wrap.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        holder.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+            @Override
+            public void onLayoutChange(View v, int l, int t, int r, int b,
+                                       int ol, int ot, int or, int ob) {
+                if (!indicatorPlaced) {
+                    placeIndicator(false);
+                }
+            }
+        });
+
+        wrap.addView(holder, new LinearLayout.LayoutParams(-1, -2));
         return wrap;
+    }
+
+    /** Sizes the pill to the selected item and (optionally) slides it there. */
+    private void placeIndicator(boolean animate) {
+        if (navIndicator == null) return;
+        View item = navItems[page];
+        if (item == null || item.getWidth() == 0) return;
+
+        FrameLayout.LayoutParams lp =
+                (FrameLayout.LayoutParams) navIndicator.getLayoutParams();
+        boolean sizeChanged = lp.width != item.getWidth()
+                || lp.height != item.getHeight()
+                || lp.topMargin != item.getTop();
+        lp.width = item.getWidth();
+        lp.height = item.getHeight();
+        lp.topMargin = item.getTop();
+        if (sizeChanged) navIndicator.setLayoutParams(lp);
+
+        float target = item.getLeft();
+        if (animate) {
+            ObjectAnimator slide = ObjectAnimator.ofFloat(navIndicator, "translationX",
+                    navIndicator.getTranslationX(), target);
+            slide.setDuration(260L);
+            slide.setInterpolator(new android.view.animation.DecelerateInterpolator());
+            slide.start();
+        } else {
+            navIndicator.setTranslationX(target);
+        }
+        navIndicator.setAlpha(1f);
+        indicatorPlaced = true;
     }
 
     private View navItem(final int idx, M3Icons.Icon icon, String label) {
         LinearLayout item = Ui.col(this);
         item.setGravity(Gravity.CENTER);
-        item.setPadding(Ui.dp(this, 4), Ui.dp(this, 7), Ui.dp(this, 4), Ui.dp(this, 7));
+        item.setPadding(Ui.dp(this, 6), Ui.dp(this, 8), Ui.dp(this, 6), Ui.dp(this, 8));
+        // Expressive tap response via rounded capsule mask
+        item.setBackground(Ui.pillShape(this, 0x00000000, 0, 0));
 
         ImageView ic = new ImageView(this);
         ic.setImageDrawable(icon);
         ic.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        item.addView(ic, new LinearLayout.LayoutParams(Ui.dp(this, 21), Ui.dp(this, 21)));
+        item.addView(ic, new LinearLayout.LayoutParams(Ui.dp(this, 22), Ui.dp(this, 22)));
 
-        TextView lb = Ui.label(this, label, 10.5f, Ui.MUTED);
+        TextView lb = Ui.label(this, label, 11f, Ui.MUTED);
         lb.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams lbLp = new LinearLayout.LayoutParams(-2, -2);
-        lbLp.topMargin = Ui.dp(this, 3);
+        lbLp.topMargin = Ui.dp(this, 4);
         item.addView(lb, lbLp);
 
         navIcons[idx] = ic;
         navLabels[idx] = lb;
         item.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { switchPage(idx); }
+            @Override public void onClick(View v) {
+                Ui.tap(v);
+                switchPage(idx);
+            }
         });
         return item;
     }
 
     private void switchPage(int idx) {
+        if (sectionPage() != -1) return;
         page = idx;
-        shellPage.setVisibility(idx == 0 ? View.VISIBLE : View.GONE);
-        themePage.setVisibility(idx == 1 ? View.VISIBLE : View.GONE);
-        iconsPage.setVisibility(idx == 2 ? View.VISIBLE : View.GONE);
-        settingsPage.setVisibility(idx == 3 ? View.VISIBLE : View.GONE);
-        if (pasteBtn != null) pasteBtn.setVisibility(idx == 0 ? View.VISIBLE : View.GONE);
-        for (int i = 0; i < 4; i++) {
+        View[] pages = new View[7];
+        pages[PAGE_SHELL] = shellPage;
+        pages[PAGE_SETTINGS] = settingsPage;
+        pages[PAGE_CUSTOM] = customPage;
+        for (int i = 0; i < pages.length; i++) {
+            if (pages[i] == null) continue;
+            if (i == idx) {
+                fadeIn(pages[i]);
+            } else {
+                pages[i].animate().cancel();
+                pages[i].setAlpha(1f);
+                pages[i].setTranslationY(0f);
+                pages[i].setVisibility(View.GONE);
+            }
+        }
+        if (pasteBtn != null) {
+            pasteBtn.setVisibility(idx == PAGE_SHELL ? View.VISIBLE : View.GONE);
+        }
+        for (int i = 0; i < navIcons.length; i++) {
+            if (navIcons[i] == null || navLabels[i] == null) continue;
             boolean sel = i == idx;
             Drawable d = navIcons[i].getDrawable();
             if (d != null) d.setTint(sel ? Ui.ACCENT : Ui.MUTED);
             navLabels[i].setTextColor(sel ? Ui.ACCENT : Ui.MUTED);
-            navItems[i].setBackground(sel
-                    ? Ui.pressable(this, Ui.PRIMARY, Ui.PRIMARY_PRESSED, 14f)
-                    : Ui.shape(this, 0x00000000, 14f, 0, 0));
         }
+        placeIndicator(true);
+    }
+
+    /** Soft fade + rise used whenever a page becomes visible. */
+    private void fadeIn(View v) {
+        v.animate().cancel();
+        v.setAlpha(0f);
+        v.setTranslationY(Ui.dp(this, 10));
+        v.setVisibility(View.VISIBLE);
+        v.animate().alpha(1f).translationY(0f).setDuration(200L)
+                .setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator())
+                .start();
     }
 
     private View topBar() {
         LinearLayout row = Ui.row(this);
 
         ImageView importBtn = iconButton(
-                M3Icons.folder(Ui.ACCENT, Ui.dp(this, 21)),
+                M3Icons.folder(Ui.ACCENT, Ui.dp(this, 22)),
                 new View.OnClickListener() {
                     @Override public void onClick(View v) { pickScriptFile(); }
                 });
-        row.addView(importBtn, new LinearLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44)));
+        row.addView(importBtn, new LinearLayout.LayoutParams(Ui.dp(this, 46), Ui.dp(this, 46)));
 
         ImageView clearBtn = iconButton(
-                M3Icons.trash(Ui.ACCENT, Ui.dp(this, 21)),
+                M3Icons.trash(Ui.ACCENT, Ui.dp(this, 22)),
                 new View.OnClickListener() {
                     @Override public void onClick(View v) {
                         entries.clear();
@@ -411,18 +628,18 @@ public class Main extends Activity {
                     }
                 });
         LinearLayout.LayoutParams clearLp =
-                new LinearLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44));
-        clearLp.leftMargin = Ui.dp(this, 14);
+                new LinearLayout.LayoutParams(Ui.dp(this, 46), Ui.dp(this, 46));
+        clearLp.leftMargin = Ui.dp(this, 12);
         row.addView(clearBtn, clearLp);
 
         row.addView(new View(this), Ui.grow());
 
         ImageView settingsBtn = iconButton(
-                M3Icons.tune(Ui.ACCENT, Ui.dp(this, 21)),
+                M3Icons.tune(Ui.ACCENT, Ui.dp(this, 22)),
                 new View.OnClickListener() {
-                    @Override public void onClick(View v) { switchPage(2); }
+                    @Override public void onClick(View v) { switchPage(PAGE_SETTINGS); }
                 });
-        row.addView(settingsBtn, new LinearLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44)));
+        row.addView(settingsBtn, new LinearLayout.LayoutParams(Ui.dp(this, 46), Ui.dp(this, 46)));
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.bottomMargin = Ui.dp(this, 20);
@@ -434,41 +651,82 @@ public class Main extends Activity {
         ImageView b = new ImageView(this);
         b.setImageDrawable(icon);
         b.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        b.setBackground(Ui.pressable(this, Ui.PRIMARY, Ui.PRIMARY_PRESSED, 22f));
-        int p = Ui.dp(this, 11);
+        b.setBackground(Ui.pillRipple(this, Ui.SURFACE_HIGH, 0x40FFFFFF));
+        int p = Ui.dp(this, 12);
         b.setPadding(p, p, p, p);
-        b.setOnClickListener(l);
+        b.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Ui.tap(v);
+                l.onClick(v);
+            }
+        });
         return b;
     }
 
     private View titleRow() {
         LinearLayout row = Ui.row(this);
 
-        TextView title = Ui.label(this, "GC Tune", 26f, Ui.TEXT);
+        TextView title = Ui.label(this, "GC Tune", 28f, Ui.TEXT);
+        title.setLetterSpacing(-0.01f);
         row.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        // M3 Expressive status capsule: pill container with glowing outline
+        LinearLayout pill = Ui.row(this);
+        pill.setGravity(Gravity.CENTER_VERTICAL);
+        pill.setBackground(Ui.pillShape(this, Ui.SURFACE_HIGH, Ui.BORDER_SOFT, 1.2f));
+        pill.setPadding(Ui.dp(this, 12), Ui.dp(this, 6), Ui.dp(this, 14), Ui.dp(this, 6));
 
         statusDot = new ImageView(this);
         statusDot.setImageDrawable(iconDotOff);
         statusDot.setScaleType(ImageView.ScaleType.FIT_CENTER);
         LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(-2, -2);
-        dotLp.rightMargin = Ui.dp(this, 6);
-        row.addView(statusDot, dotLp);
+        dotLp.rightMargin = Ui.dp(this, 7);
+        pill.addView(statusDot, dotLp);
 
-        statusText = Ui.text(this, "", 11f, Ui.MUTED);
-        row.addView(statusText);
+        statusText = Ui.text(this, "", 11.5f, Ui.MUTED);
+        pill.addView(statusText);
+
+        LinearLayout.LayoutParams pillLp = new LinearLayout.LayoutParams(-2, -2);
+        pillLp.bottomMargin = Ui.dp(this, 4);
+        row.addView(pill, pillLp);
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.bottomMargin = Ui.dp(this, 18);
+        lp.bottomMargin = Ui.dp(this, 20);
         row.setLayoutParams(lp);
         return row;
+    }
+
+    /** Breathing scale on the status dot while a command is in flight. */
+    private void setDotPulse(boolean on) {
+        if (statusDot == null) return;
+        if (on) {
+            if (dotPulse == null) {
+                android.animation.PropertyValuesHolder sx =
+                        android.animation.PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.4f);
+                android.animation.PropertyValuesHolder sy =
+                        android.animation.PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.4f);
+                dotPulse = ObjectAnimator.ofPropertyValuesHolder(statusDot, sx, sy);
+                dotPulse.setDuration(500L);
+                dotPulse.setRepeatCount(ValueAnimator.INFINITE);
+                dotPulse.setRepeatMode(ValueAnimator.REVERSE);
+            }
+            if (!dotPulse.isRunning()) dotPulse.start();
+        } else if (dotPulse != null) {
+            dotPulse.cancel();
+            statusDot.setScaleX(1f);
+            statusDot.setScaleY(1f);
+        }
     }
 
     private View inputRow() {
         LinearLayout row = Ui.row(this);
 
         LinearLayout box = Ui.col(this);
-        box.setBackground(Ui.shape(this, Ui.INPUT_BG, 12f, Ui.BORDER, 1.4f));
-        box.setPadding(Ui.dp(this, 12), Ui.dp(this, 7), Ui.dp(this, 12), Ui.dp(this, 6));
+        // Expressive input shape: generous 22dp corner radius with deep background
+        final android.graphics.drawable.GradientDrawable boxBg =
+                Ui.shape(this, Ui.INPUT_BG, 22f, Ui.BORDER, 1.2f);
+        box.setBackground(boxBg);
+        box.setPadding(Ui.dp(this, 16), Ui.dp(this, 10), Ui.dp(this, 16), Ui.dp(this, 10));
 
         cmdInput = new EditText(this);
         cmdInput.setBackground(null);
@@ -481,6 +739,13 @@ public class Main extends Activity {
         cmdInput.setMinLines(2);
         cmdInput.setMaxLines(8);
         cmdInput.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 4));
+        cmdInput.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                boxBg.setStroke(Ui.dp(Main.this, hasFocus ? 2f : 1.2f),
+                        hasFocus ? Ui.ACCENT : Ui.BORDER);
+            }
+        });
         box.addView(cmdInput, new LinearLayout.LayoutParams(-1, -2));
 
         row.addView(box, new LinearLayout.LayoutParams(0, -2, 1f));
@@ -488,20 +753,22 @@ public class Main extends Activity {
         runBtn = new ImageView(this);
         runBtn.setImageDrawable(iconPlay);
         runBtn.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        runBtn.setBackground(Ui.pressable(this, Ui.PRIMARY, Ui.PRIMARY_PRESSED, 16f));
-        int p = Ui.dp(this, 13);
+        runBtn.setBackground(Ui.pillRipple(this, Ui.PRIMARY, 0x40FFFFFF));
+        int p = Ui.dp(this, 14);
         runBtn.setPadding(p, p, p, p);
+        runBtn.setElevation(Ui.dp(this, 3));
         runBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
+                Ui.tap(v);
                 if (busy) cancelRun(); else executeCurrentCommand();
             }
         });
-        LinearLayout.LayoutParams runLp = new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48));
-        runLp.leftMargin = Ui.dp(this, 10);
+        LinearLayout.LayoutParams runLp = new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 52));
+        runLp.leftMargin = Ui.dp(this, 12);
         row.addView(runBtn, runLp);
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.topMargin = Ui.dp(this, 14);
+        lp.topMargin = Ui.dp(this, 12);
         lp.bottomMargin = Ui.dp(this, 18);
         row.setLayoutParams(lp);
         return row;
@@ -509,22 +776,108 @@ public class Main extends Activity {
 
     private View consoleCard() {
         LinearLayout card = Ui.col(this);
-        card.setBackground(Ui.shape(this, Ui.SURFACE, 12f, Ui.BORDER_SOFT, 1f));
-        card.setPadding(Ui.dp(this, 4), Ui.dp(this, 8), Ui.dp(this, 4), Ui.dp(this, 8));
+        // Expressive card container: 24dp radius, subtle micro-contrast border
+        card.setBackground(Ui.shape(this, Ui.SURFACE, 24f, Ui.BORDER_SOFT, 1.2f));
+
+        // ---- header: caption + copy-to-clipboard
+        LinearLayout head = Ui.row(this);
+        head.setPadding(Ui.dp(this, 18), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 10));
+        head.addView(Ui.section(this, "Консоль"),
+                new LinearLayout.LayoutParams(0, -2, 1f));
+
+        ImageView copyBtn = new ImageView(this);
+        copyBtn.setImageDrawable(M3Icons.clipboard(Ui.MUTED, Ui.dp(this, 17)));
+        copyBtn.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        copyBtn.setBackground(Ui.pillRipple(this, 0x00000000, 0x306CE5A8));
+        int cp = Ui.dp(this, 8);
+        copyBtn.setPadding(cp, cp, cp, cp);
+        copyBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { Ui.tap(v); copyLog(); }
+        });
+        head.addView(copyBtn, new LinearLayout.LayoutParams(-2, -2));
+        card.addView(head, new LinearLayout.LayoutParams(-1, -2));
+
+        View divider = new View(this);
+        divider.setBackgroundColor(Ui.BORDER_SOFT);
+        card.addView(divider, new LinearLayout.LayoutParams(-1, Ui.dp(this, 1)));
+
+        // ---- body: scrollable log + "jump to bottom" bubble
+        FrameLayout body = new FrameLayout(this);
 
         logScroll = new ScrollView(this);
-        logScroll.setPadding(Ui.dp(this, 10), Ui.dp(this, 6), Ui.dp(this, 10), Ui.dp(this, 6));
+        logScroll.setPadding(Ui.dp(this, 16), Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 12));
         logScroll.setVerticalScrollBarEnabled(false);
 
         logView = new TextView(this);
         logView.setTextColor(Ui.TEXT);
         logView.setTypeface(Typeface.MONOSPACE);
-        logView.setTextSize(12f);
+        logView.setTextSize(12.5f);
+        logView.setLetterSpacing(0.02f);
         logView.setTextIsSelectable(true);
         logScroll.addView(logView);
+        body.addView(logScroll, new FrameLayout.LayoutParams(-1, -1));
 
-        card.addView(logScroll, new LinearLayout.LayoutParams(-1, Ui.dp(this, 250)));
+        jumpLogBtn = new ImageView(this);
+        jumpLogBtn.setImageDrawable(M3Icons.chevron(Ui.ACCENT, Ui.dp(this, 18)));
+        jumpLogBtn.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        jumpLogBtn.setRotation(90f);
+        jumpLogBtn.setBackground(Ui.pillRipple(this, Ui.PRIMARY, 0x40FFFFFF));
+        int jp = Ui.dp(this, 10);
+        jumpLogBtn.setPadding(jp, jp, jp, jp);
+        jumpLogBtn.setElevation(Ui.dp(this, 3));
+        jumpLogBtn.setVisibility(View.GONE);
+        FrameLayout.LayoutParams jumpLp =
+                new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END);
+        jumpLp.rightMargin = Ui.dp(this, 12);
+        jumpLp.bottomMargin = Ui.dp(this, 12);
+        body.addView(jumpLogBtn, jumpLp);
+        jumpLogBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Ui.tap(v);
+                logScroll.fullScroll(View.FOCUS_DOWN);
+            }
+        });
+
+        logScroll.setOnScrollChangeListener(new View.OnScrollChangeListener() {
+            @Override
+            public void onScrollChange(View v, int sx, int sy, int ox, int oy) {
+                jumpLogBtn.setVisibility(v.canScrollVertically(1) ? View.VISIBLE : View.GONE);
+            }
+        });
+
+        card.addView(body, new LinearLayout.LayoutParams(-1, Ui.dp(this, 260)));
         return card;
+    }
+
+    /** Plain-text dump of the console for the copy button. */
+    private void copyLog() {
+        if (entries.isEmpty()) {
+            toast("Консоль пуста");
+            return;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (Entry e : entries) {
+            if (e.status) {
+                sb.append(e.out).append('\n');
+            } else {
+                sb.append("uid1000$ ").append(e.cmd).append('\n');
+                if (e.pending) sb.append("…выполняется\n");
+                else if (e.failed) sb.append("нет ответа от uid 1000\n");
+                else {
+                    sb.append(e.out).append('\n');
+                    if (e.rc != RC_UNKNOWN) sb.append("rc ").append(e.rc).append('\n');
+                }
+            }
+            sb.append('\n');
+        }
+        try {
+            android.content.ClipboardManager clipboard =
+                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("GC Tune", sb.toString()));
+            toast("Вывод скопирован");
+        } catch (Throwable t) {
+            toast("Не удалось скопировать");
+        }
     }
 
     // ----------------------------------------------------------------- theme
@@ -538,9 +891,7 @@ public class Main extends Activity {
         scroll.addView(root, new FrameLayout.LayoutParams(-1, -2));
 
         TextView title = Ui.label(this, "Тема", 26f, Ui.TEXT);
-        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-2, -2);
-        titleLp.bottomMargin = Ui.dp(this, 16);
-        root.addView(title, titleLp);
+        root.addView(pageTitle(title, "Установка и применение .itz"));
 
         themeHint = hintCard();
         themeHint.setVisibility(View.GONE);
@@ -552,11 +903,11 @@ public class Main extends Activity {
         LinearLayout fileCard = Ui.col(this);
         fileCard.setBackground(Ui.shape(this, Ui.SURFACE, 12f, Ui.BORDER_SOFT, 1f));
         fileCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14));
-        fileCard.addView(Ui.label(this, "Файл темы (.itz)", 12.5f, Ui.MUTED));
+        fileCard.addView(Ui.section(this, "Файл темы (.itz)"));
 
         themeFileText = Ui.text(this, "файл не выбран", 14f, Ui.TEXT);
         LinearLayout.LayoutParams fileLp = new LinearLayout.LayoutParams(-2, -2);
-        fileLp.topMargin = Ui.dp(this, 6);
+        fileLp.topMargin = Ui.dp(this, 8);
         fileCard.addView(themeFileText, fileLp);
 
         View choose = pillButton(M3Icons.folder(Ui.ACCENT, Ui.dp(this, 18)), "Выбрать .itz",
@@ -593,10 +944,8 @@ public class Main extends Activity {
         root.addView(statusCard, statusLp);
 
         TextView note = Ui.text(this,
-                "Выбранный файл используется по его настоящему пути (если возможно); иначе копия "
-                        + "кладётся в Download/gctune. Команда через канал Game Cube заменяет только "
-                        + ".itz в папке темы .../theme/.dwd/.../T, сверяет md5 и открывает iTheme. "
-                        + "Выполнится при открытом режиме игры.", 11.5f, Ui.MUTED);
+                "Копия файла — в Download/gctune. Применение — при открытом режиме игры.",
+                11.5f, Ui.MUTED);
         LinearLayout.LayoutParams noteLp = new LinearLayout.LayoutParams(-1, -2);
         noteLp.bottomMargin = Ui.dp(this, 24);
         root.addView(note, noteLp);
@@ -604,11 +953,29 @@ public class Main extends Activity {
         return scroll;
     }
 
+    /** Big Expressive page title with generous typography and a muted subtitle underneath. */
+    private View pageTitle(TextView title, String subtitle) {
+        LinearLayout col = Ui.col(this);
+        title.setTextSize(28f);
+        title.setLetterSpacing(-0.01f);
+        col.addView(title);
+        TextView sub = Ui.text(this, subtitle, 12.5f, Ui.MUTED);
+        LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(-2, -2);
+        subLp.topMargin = Ui.dp(this, 4);
+        col.addView(sub, subLp);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.bottomMargin = Ui.dp(this, 20);
+        col.setLayoutParams(lp);
+        return col;
+    }
+
     private View pillButton(M3Icons.Icon icon, String label, View.OnClickListener onClick) {
         LinearLayout row = Ui.row(this);
         row.setGravity(Gravity.CENTER);
-        row.setBackground(Ui.pressable(this, Ui.PRIMARY, Ui.PRIMARY_PRESSED, 16f));
-        row.setPadding(Ui.dp(this, 16), Ui.dp(this, 13), Ui.dp(this, 16), Ui.dp(this, 13));
+        // Expressive full capsule pill button (radius = height / 2) with micro-elevation
+        row.setBackground(Ui.pillRipple(this, Ui.PRIMARY, 0x40FFFFFF));
+        row.setPadding(Ui.dp(this, 18), Ui.dp(this, 13), Ui.dp(this, 18), Ui.dp(this, 13));
+        row.setElevation(Ui.dp(this, 2));
 
         ImageView ic = new ImageView(this);
         ic.setImageDrawable(icon);
@@ -617,26 +984,51 @@ public class Main extends Activity {
 
         TextView lb = Ui.label(this, label, 14f, Ui.TEXT);
         LinearLayout.LayoutParams lbLp = new LinearLayout.LayoutParams(-2, -2);
-        lbLp.leftMargin = Ui.dp(this, 9);
+        lbLp.leftMargin = Ui.dp(this, 10);
         row.addView(lb, lbLp);
 
-        row.setOnClickListener(onClick);
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Ui.tap(v);
+                onClick.onClick(v);
+            }
+        });
+        return row;
+    }
+
+    /** Pill button without an icon — for narrow half-width pairs. */
+    private View textButton(String label, View.OnClickListener onClick) {
+        LinearLayout row = Ui.row(this);
+        row.setGravity(Gravity.CENTER);
+        row.setBackground(Ui.pillRipple(this, Ui.PRIMARY, 0x40FFFFFF));
+        row.setPadding(Ui.dp(this, 14), Ui.dp(this, 13), Ui.dp(this, 14), Ui.dp(this, 13));
+        row.setElevation(Ui.dp(this, 2));
+        TextView lb = Ui.label(this, label, 14f, Ui.TEXT);
+        lb.setGravity(Gravity.CENTER);
+        row.addView(lb);
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Ui.tap(v);
+                onClick.onClick(v);
+            }
+        });
         return row;
     }
 
     /** "Open the game mode" hint with an arrow, pulses while a command is pending. */
     private View hintCard() {
         LinearLayout card = Ui.row(this);
-        card.setBackground(Ui.shape(this, 0x1482E5A6, 12f, Ui.ACCENT, 1.2f));
-        card.setPadding(Ui.dp(this, 14), Ui.dp(this, 13), Ui.dp(this, 14), Ui.dp(this, 13));
+        // M3 Expressive Container: 22dp corner radius with glowing outline
+        card.setBackground(Ui.shape(this, 0x1A6CE5A8, 22f, Ui.ACCENT, 1.2f));
+        card.setPadding(Ui.dp(this, 16), Ui.dp(this, 14), Ui.dp(this, 16), Ui.dp(this, 14));
 
         ImageView arrow = new ImageView(this);
-        arrow.setImageDrawable(M3Icons.arrowUpRight(Ui.ACCENT, Ui.dp(this, 26)));
+        arrow.setImageDrawable(M3Icons.arrowUpRight(Ui.ACCENT, Ui.dp(this, 28)));
         arrow.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        card.addView(arrow, new LinearLayout.LayoutParams(Ui.dp(this, 30), Ui.dp(this, 30)));
+        card.addView(arrow, new LinearLayout.LayoutParams(Ui.dp(this, 32), Ui.dp(this, 32)));
 
         LinearLayout col = Ui.col(this);
-        col.addView(Ui.label(this, "Откройте режим игры", 15f, Ui.ACCENT));
+        col.addView(Ui.label(this, "Откройте режим игры", 15.5f, Ui.ACCENT));
         TextView sub = Ui.text(this,
                 "Команда выполнится сама, как только откроете шторку Game Cube — "
                         + "FpsManager запустит её автоматически.", 12f, Ui.TEXT);
@@ -645,7 +1037,7 @@ public class Main extends Activity {
         col.addView(sub, subLp);
 
         LinearLayout.LayoutParams colLp = new LinearLayout.LayoutParams(0, -2, 1f);
-        colLp.leftMargin = Ui.dp(this, 12);
+        colLp.leftMargin = Ui.dp(this, 14);
         card.addView(col, colLp);
         return card;
     }
@@ -707,7 +1099,7 @@ public class Main extends Activity {
                         Throwable firstErr = null;
                         if (Build.VERSION.SDK_INT >= 29) {
                             try {
-                                staged = copyToDownloads(src);
+                                staged = copyToDownloads(src, STAGE_NAME);
                             } catch (Throwable t) {
                                 Log.e("GCTune", "MediaStore stage failed: " + t);
                                 firstErr = t;
@@ -715,7 +1107,7 @@ public class Main extends Activity {
                         }
                         if (staged == null) {
                             try {
-                                staged = copyToAppFiles(src);
+                                staged = copyToAppFiles(src, STAGE_NAME);
                             } catch (Throwable t) {
                                 if (firstErr == null) firstErr = t;
                             }
@@ -842,7 +1234,7 @@ public class Main extends Activity {
     }
 
     /** API 29+: public Download/gctune/theme.itz via MediaStore (no storage permission). */
-    private String copyToDownloads(Uri src) throws Exception {
+    private String copyToDownloads(Uri src, String name) throws Exception {
         ContentResolver r = getContentResolver();
         String rel = Environment.DIRECTORY_DOWNLOADS + "/" + STAGE_DIR;
 
@@ -851,7 +1243,7 @@ public class Main extends Activity {
                         MediaStore.MediaColumns.RELATIVE_PATH},
                 MediaStore.MediaColumns.DISPLAY_NAME + "=? AND "
                         + MediaStore.MediaColumns.RELATIVE_PATH + "=?",
-                new String[]{STAGE_NAME, rel + "/"}, null);
+                new String[]{name, rel + "/"}, null);
         if (old != null) {
             while (old.moveToNext()) {
                 try {
@@ -863,7 +1255,7 @@ public class Main extends Activity {
         }
 
         ContentValues v = new ContentValues();
-        v.put(MediaStore.MediaColumns.DISPLAY_NAME, STAGE_NAME);
+        v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
         v.put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream");
         v.put(MediaStore.MediaColumns.RELATIVE_PATH, rel);
         Uri out = r.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
@@ -898,16 +1290,16 @@ public class Main extends Activity {
         }
         if (path == null || path.isEmpty()) {
             path = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                    + "/" + STAGE_DIR + "/" + STAGE_NAME;
+                    + "/" + STAGE_DIR + "/" + name;
         }
         return path;
     }
 
     /** Fallback: app-specific external dir (needs no permission on any API level). */
-    private String copyToAppFiles(Uri src) throws Exception {
+    private String copyToAppFiles(Uri src, String name) throws Exception {
         File dir = getExternalFilesDir(null);
         if (dir == null) throw new Exception("нет внешнего хранилища");
-        File f = new File(dir, STAGE_NAME);
+        File f = new File(dir, name);
 
         InputStream in = getContentResolver().openInputStream(src);
         if (in == null) throw new Exception("источник недоступен");
@@ -1079,6 +1471,7 @@ public class Main extends Activity {
         iconsBgColor = prefs.getInt("icons_bg_color", iconsBgColor);
         iconsFgScale = prefs.getInt("icons_fg_scale", iconsFgScale);
         iconsRadius = prefs.getInt("icons_radius", iconsRadius);
+        iconsShape = prefs.getInt("icons_shape", iconsShape);
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
@@ -1088,20 +1481,20 @@ public class Main extends Activity {
         root.setPadding(Ui.dp(this, 18), Ui.dp(this, 22), Ui.dp(this, 18), Ui.dp(this, 30));
         scroll.addView(root, new FrameLayout.LayoutParams(-1, -2));
 
-        root.addView(Ui.label(this, "Иконки", 26f, Ui.TEXT));
+        TextView iconsTitle = Ui.label(this, "Иконки", 26f, Ui.TEXT);
+        root.addView(pageTitle(iconsTitle, "Перекраска и стилизация иконок"));
 
         // ---- preview card
         LinearLayout previewCard = Ui.col(this);
         previewCard.setBackground(Ui.shape(this, Ui.SURFACE, 12f, Ui.BORDER_SOFT, 1f));
         previewCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14));
-        previewCard.addView(Ui.label(this, "Предпросмотр", 12.5f, Ui.MUTED));
+        previewCard.addView(Ui.section(this, "Предпросмотр"));
         iconsPreviewRow = new LinearLayout(this);
         iconsPreviewRow.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams prevLp = new LinearLayout.LayoutParams(-1, -2);
         prevLp.topMargin = Ui.dp(this, 10);
         previewCard.addView(iconsPreviewRow, prevLp);
         LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(-1, -2);
-        cardLp.topMargin = Ui.dp(this, 16);
         cardLp.bottomMargin = Ui.dp(this, 14);
         root.addView(previewCard, cardLp);
 
@@ -1109,7 +1502,7 @@ public class Main extends Activity {
         LinearLayout srcCard = Ui.col(this);
         srcCard.setBackground(Ui.shape(this, Ui.SURFACE, 12f, Ui.BORDER_SOFT, 1f));
         srcCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14));
-        srcCard.addView(Ui.label(this, "Источник иконок", 12.5f, Ui.MUTED));
+        srcCard.addView(Ui.section(this, "Источник иконок"));
 
         LinearLayout srcRow = new LinearLayout(this);
         srcRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -1137,7 +1530,7 @@ public class Main extends Activity {
         LinearLayout colorCard = Ui.col(this);
         colorCard.setBackground(Ui.shape(this, Ui.SURFACE, 12f, Ui.BORDER_SOFT, 1f));
         colorCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14));
-        colorCard.addView(Ui.label(this, "Цвет перекраски", 12.5f, Ui.MUTED));
+        colorCard.addView(Ui.section(this, "Цвет перекраски"));
 
         // preset swatches
         String[] presets = {"#3D7D56", "#E53935", "#1E88E5", "#FDD835", "#8E24AA",
@@ -1151,7 +1544,7 @@ public class Main extends Activity {
             final int color = parseColor(hex);
             View sw = swatch(color);
             sw.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) { setIconsColor(color); }
+                @Override public void onClick(View v) { Ui.tap(v); setIconsColor(color); }
             });
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(this, 34), Ui.dp(this, 34));
             lp.rightMargin = Ui.dp(this, 8);
@@ -1195,7 +1588,7 @@ public class Main extends Activity {
         LinearLayout tuneCard = Ui.col(this);
         tuneCard.setBackground(Ui.shape(this, Ui.SURFACE, 12f, Ui.BORDER_SOFT, 1f));
         tuneCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14));
-        tuneCard.addView(Ui.label(this, "Тонкая настройка", 12.5f, Ui.MUTED));
+        tuneCard.addView(Ui.section(this, "Тонкая настройка"));
         sbDesat = addSlider(tuneCard, "Обесцвечивание", iconsDesat, new IntSetter() {
             @Override public void set(int v) { iconsDesat = v; }
         });
@@ -1220,7 +1613,7 @@ public class Main extends Activity {
         LinearLayout styleCard = Ui.col(this);
         styleCard.setBackground(Ui.shape(this, Ui.SURFACE, 12f, Ui.BORDER_SOFT, 1f));
         styleCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14));
-        styleCard.addView(Ui.label(this, "Стиль: фон + иконка", 12.5f, Ui.MUTED));
+        styleCard.addView(Ui.section(this, "Стиль: фон + иконка"));
 
         LinearLayout switchRow = new LinearLayout(this);
         switchRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -1231,6 +1624,7 @@ public class Main extends Activity {
         switchRow.addView(switchLabel, new LinearLayout.LayoutParams(0, -2, 1f));
         final Switch sw = new Switch(this);
         sw.setChecked(iconsBgEnabled);
+        tintSwitch(sw);
         sw.setOnCheckedChangeListener(new android.widget.CompoundButton.OnCheckedChangeListener() {
             @Override public void onCheckedChanged(android.widget.CompoundButton b, boolean checked) {
                 iconsBgEnabled = checked;
@@ -1253,7 +1647,7 @@ public class Main extends Activity {
             final int color = parseColor(hex);
             View s = swatch(color);
             s.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) { setIconsBgColor(color); }
+                @Override public void onClick(View v) { Ui.tap(v); setIconsBgColor(color); }
             });
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(this, 26), Ui.dp(this, 26));
             lp.leftMargin = Ui.dp(this, 6);
@@ -1283,12 +1677,77 @@ public class Main extends Activity {
         });
         styleCard.addView(bgRow, bgRowLp);
 
-        sbFgScale = addSlider(styleCard, "Размер иконки", 40, 120, iconsFgScale, new IntSetter() {
+        sbFgScale = addSlider(styleCard, "Размер иконки", 15, 200, iconsFgScale, new IntSetter() {
             @Override public void set(int v) { iconsFgScale = v; }
         });
-        sbRadius = addSlider(styleCard, "Скругление фона", 0, 50, iconsRadius, new IntSetter() {
+        sbRadius = addSlider(styleCard, "Скругление углов", 0, 50, iconsRadius, new IntSetter() {
             @Override public void set(int v) { iconsRadius = v; }
         });
+
+        // ---- Shape selector chips (Full control over icon geometry)
+        LinearLayout shapeHead = new LinearLayout(this);
+        shapeHead.setOrientation(LinearLayout.HORIZONTAL);
+        shapeHead.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams shLp = new LinearLayout.LayoutParams(-1, -2);
+        shLp.topMargin = Ui.dp(this, 14);
+        shapeHead.addView(Ui.section(this, "Форма иконки"), new LinearLayout.LayoutParams(0, -2, 1f));
+        styleCard.addView(shapeHead, shLp);
+
+        final String[] shapeNames = {
+                "Закругленный", "Squircle", "Круг", "Капля", "Шестигранник", "Восьмигранник",
+                "Цветок", "Галька", "Пятигранник", "Ромб", "Клевер", "Арка", "Солнце"
+        };
+        final int[] shapeIds = {
+                IconsTinter.SHAPE_ROUNDED, IconsTinter.SHAPE_SQUIRCLE, IconsTinter.SHAPE_CIRCLE,
+                IconsTinter.SHAPE_TEARDROP, IconsTinter.SHAPE_HEXAGON, IconsTinter.SHAPE_OCTAGON,
+                IconsTinter.SHAPE_STAR, IconsTinter.SHAPE_PEBBLE, IconsTinter.SHAPE_PENTAGON,
+                IconsTinter.SHAPE_DIAMOND, IconsTinter.SHAPE_CLOVER, IconsTinter.SHAPE_ARCH,
+                IconsTinter.SHAPE_SUNBURST
+        };
+
+        android.widget.HorizontalScrollView hScroll = new android.widget.HorizontalScrollView(this);
+        hScroll.setHorizontalScrollBarEnabled(false);
+        final LinearLayout chipRow = new LinearLayout(this);
+        chipRow.setOrientation(LinearLayout.HORIZONTAL);
+        chipRow.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 6));
+
+        final List<TextView> chips = new ArrayList<>();
+        for (int si = 0; si < shapeIds.length; si++) {
+            final int sId = shapeIds[si];
+            final TextView chip = new TextView(this);
+            chip.setText(shapeNames[si]);
+            chip.setTextSize(12f);
+            chip.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            boolean sel = (iconsShape == sId);
+            chip.setTextColor(sel ? 0xFF0D0F12 : Ui.TEXT);
+            chip.setBackground(Ui.pillShape(this, sel ? Ui.ACCENT : Ui.SURFACE_HIGH,
+                    sel ? 0 : Ui.BORDER_SOFT, sel ? 0 : 1f));
+            chip.setPadding(Ui.dp(this, 14), Ui.dp(this, 7), Ui.dp(this, 14), Ui.dp(this, 7));
+
+            LinearLayout.LayoutParams chItemLp = new LinearLayout.LayoutParams(-2, -2);
+            chItemLp.rightMargin = Ui.dp(this, 8);
+            chip.setLayoutParams(chItemLp);
+
+            chip.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    Ui.tap(v);
+                    iconsShape = sId;
+                    for (int k = 0; k < chips.size(); k++) {
+                        boolean kSel = (shapeIds[k] == iconsShape);
+                        chips.get(k).setTextColor(kSel ? 0xFF0D0F12 : Ui.TEXT);
+                        chips.get(k).setBackground(Ui.pillShape(Main.this,
+                                kSel ? Ui.ACCENT : Ui.SURFACE_HIGH,
+                                kSel ? 0 : Ui.BORDER_SOFT, kSel ? 0 : 1f));
+                    }
+                    saveIconsPrefs();
+                    refreshIconsPreview();
+                }
+            });
+            chips.add(chip);
+            chipRow.addView(chip);
+        }
+        hScroll.addView(chipRow);
+        styleCard.addView(hScroll, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout.LayoutParams styleCardLp = new LinearLayout.LayoutParams(-1, -2);
         styleCardLp.bottomMargin = Ui.dp(this, 14);
@@ -1315,11 +1774,7 @@ public class Main extends Activity {
         root.addView(statusCard, statusLp);
 
         TextView note = Ui.text(this,
-                "Иконки всех приложений перекрашиваются в выбранный цвет "
-                        + "(как в Origin Icons) и применяются через канал Game Cube "
-                        + "к /data/bbkcore/theme/icons/. Можно импортировать иконокпак "
-                        + "(ADW/Nova, appfilter.xml) и включить режим «фон + иконка» "
-                        + "как в IconPack Studio. Выполнится при открытом режиме игры.",
+                "Паки ADW/Nova импортируются. Применение — при открытом режиме игры.",
                 11.5f, Ui.MUTED);
         root.addView(note);
 
@@ -1343,7 +1798,7 @@ public class Main extends Activity {
 
     private View swatch(int color) {
         View v = new View(this);
-        v.setBackground(Ui.shape(this, color, 17f, 0x33000000, 1f));
+        v.setBackground(Ui.ripple(this, color, 17f, 0x66FFFFFF));
         return v;
     }
 
@@ -1372,6 +1827,7 @@ public class Main extends Activity {
         SeekBar sb = new SeekBar(this);
         sb.setMax(max - min);
         sb.setProgress(initial - min);
+        Ui.applyM3Slider(sb);
         sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar s, int p, boolean fromUser) {
                 int v = min + p;
@@ -1408,6 +1864,7 @@ public class Main extends Activity {
                 .putInt("icons_bg_color", iconsBgColor)
                 .putInt("icons_fg_scale", iconsFgScale)
                 .putInt("icons_radius", iconsRadius)
+                .putInt("icons_shape", iconsShape)
                 .apply();
     }
 
@@ -1416,8 +1873,9 @@ public class Main extends Activity {
         if (sbDesat != null) sbDesat.setProgress(100);
         if (sbLighten != null) sbLighten.setProgress(0);
         if (sbStrength != null) sbStrength.setProgress(100);
-        if (sbFgScale != null) sbFgScale.setProgress(76 - 40);
+        if (sbFgScale != null) sbFgScale.setProgress(76 - 15);
         if (sbRadius != null) sbRadius.setProgress(25);
+        iconsShape = IconsTinter.SHAPE_ROUNDED;
         toast("Настройки сброшены");
         saveIconsPrefs();
         refreshIconsPreview();
@@ -1544,7 +2002,7 @@ public class Main extends Activity {
             Drawable src = packIconOrNull(iconsPackages.get(i));
             if (src == null) src = orig;
             Bitmap pb = IconsTinter.compose(src, iconsColor, iconsDesat, iconsLighten, iconsStrength,
-                    iconsBgEnabled, iconsBgColor, iconsFgScale, iconsRadius);
+                    iconsBgEnabled, iconsBgColor, iconsFgScale, iconsRadius, iconsShape);
             Drawable tinted = (pb != null) ? new BitmapDrawable(getResources(), pb) : orig;
             iconsTinted.add(tinted);
             ImageView iv = new ImageView(this);
@@ -1618,7 +2076,7 @@ public class Main extends Activity {
                         if (src != null) {
                             bmp = IconsTinter.compose(src, iconsColor, iconsDesat, iconsLighten,
                                     iconsStrength, iconsBgEnabled, iconsBgColor,
-                                    iconsFgScale, iconsRadius);
+                                    iconsFgScale, iconsRadius, iconsShape);
                         }
                     } catch (Throwable t) {
                         Log.e("GCTune", "render " + pkg + " failed: " + t);
@@ -1662,6 +2120,42 @@ public class Main extends Activity {
                         in.close();
                         os.close();
                     }
+                // Write matching launcher mask and border assets so OriginOS launcher
+                // renders the selected shape & size accurately without clipping into square
+                try {
+                    File launcherDir = new File(dir, "launcher");
+                    launcherDir.mkdirs();
+
+                    Bitmap mask320 = IconsTinter.generateMask(320, 320, iconsShape, iconsRadius, iconsFgScale);
+                    FileOutputStream m320os = new FileOutputStream(new File(launcherDir, "icon_mask.png"));
+                    mask320.compress(Bitmap.CompressFormat.PNG, 100, m320os);
+                    m320os.close();
+
+                    Bitmap mask192 = IconsTinter.generateMask(192, 192, iconsShape, iconsRadius, iconsFgScale);
+                    FileOutputStream m192os = new FileOutputStream(new File(launcherDir, "icon_mask_5x9.png"));
+                    mask192.compress(Bitmap.CompressFormat.PNG, 100, m192os);
+                    m192os.close();
+
+                    // Generate shape background with selected color (or white) so launcher's background tile matches shape
+                    Bitmap bg320 = IconsTinter.generateBg(320, 320, iconsShape, iconsRadius, iconsFgScale,
+                            iconsBgEnabled ? iconsBgColor : 0xFFFFFFFF);
+                    FileOutputStream bgOs = new FileOutputStream(new File(launcherDir, "icon_bg_default.png"));
+                    bg320.compress(Bitmap.CompressFormat.PNG, 100, bgOs);
+                    bgOs.close();
+                    bg320.recycle();
+
+                    mask320.recycle();
+                    mask192.recycle();
+
+                    // Transparent 240x240 border so launcher's default square border doesn't clash with shape
+                    Bitmap emptyBorder = Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888);
+                    FileOutputStream bOs = new FileOutputStream(new File(launcherDir, "icon_border.png"));
+                    emptyBorder.compress(Bitmap.CompressFormat.PNG, 100, bOs);
+                    bOs.close();
+                    emptyBorder.recycle();
+                } catch (Throwable t) {
+                    Log.e("GCTune", "Failed to generate launcher mask assets: " + t);
+                }
                 } catch (Throwable ignored) {
                 }
                 // force the launcher to re-read theme icons; done here, in the
@@ -1761,12 +2255,27 @@ public class Main extends Activity {
         sb.append("[ -n \"$(ls -A $NEW)\" ] || { echo NO_ICONS; rm -rf $NEW; exit 0; };");
         // 2) ensure the launcher template exists (icon_bg / icon_mask / icon_border)
         sb.append("if [ ! -d $TD/launcher ]; then ");
-        sb.append("mkdir -p $TD;");
+        sb.append("mkdir -p $TD; ");
         // NB: archive members are stored as "./launcher/..." — extracting the bare
         // name "launcher" silently matches nothing (tar exits 0, extracts 0 files)
-        sb.append("tar -xzf /sdcard/Download/gctune/origin_theme_template.tgz -C $TD ./launcher 2>/dev/null;");
-        sb.append("restorecon -RF $TD 2>/dev/null;");
-        sb.append("fi;");
+        sb.append("tar -xzf /sdcard/Download/gctune/origin_theme_template.tgz -C $TD ./launcher 2>/dev/null; ");
+        sb.append("fi; ");
+        // Overwrite launcher mask and border with the newly generated shape masks
+        sb.append("if [ -d \"$SRC\"/launcher ]; then ");
+        sb.append("cp \"$SRC\"/launcher/icon_border.png $TD/launcher/icon_border.png 2>/dev/null; ");
+        sb.append("cp \"$SRC\"/launcher/icon_border.png $TD/launcher/icon_border_two.png 2>/dev/null; ");
+        sb.append("cp \"$SRC\"/launcher/icon_mask.png $TD/launcher/icon_mask.png 2>/dev/null; ");
+        sb.append("cp \"$SRC\"/launcher/icon_mask.png $TD/launcher/icon_mask_two.png 2>/dev/null; ");
+        sb.append("cp \"$SRC\"/launcher/icon_mask.png $TD/launcher/icon_mask_three.png 2>/dev/null; ");
+        sb.append("for mf in $TD/launcher/icon_mask_*_1x1.png; do ");
+        sb.append("[ -f \"$mf\" ] && cp \"$SRC\"/launcher/icon_mask_5x9.png \"$mf\" 2>/dev/null; ");
+        sb.append("done; ");
+        sb.append("for bg in $TD/launcher/icon_bg_*.png; do ");
+        sb.append("[ -f \"$bg\" ] && cp \"$SRC\"/launcher/icon_bg_default.png \"$bg\" 2>/dev/null; ");
+        sb.append("done; ");
+        sb.append("chmod -R 777 $TD/launcher 2>/dev/null; ");
+        sb.append("restorecon -RF $TD/launcher 2>/dev/null; ");
+        sb.append("fi; ");
         // 3) The launcher keys its icon cache on theme_icons_style_explore —
         // without a flip it keeps serving the OLD bitmaps for already-cached
         // apps and only "new" icons get recolored (that is why recoloring was
@@ -1860,14 +2369,19 @@ public class Main extends Activity {
         root.setPadding(Ui.dp(this, 18), Ui.dp(this, 22), Ui.dp(this, 18), Ui.dp(this, 30));
         scroll.addView(root, new FrameLayout.LayoutParams(-1, -2));
 
-        TextView title = Ui.label(this, "Настройки", 26f, Ui.TEXT);
-        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-2, -2);
-        titleLp.bottomMargin = Ui.dp(this, 10);
-        root.addView(title, titleLp);
+        TextView title = Ui.label(this, "Настройки", 28f, Ui.TEXT);
+        root.addView(pageTitle(title, "Канал и параметры приложения"));
 
-        root.addView(settingsSwitchRow());
-        root.addView(settingsTimeoutRow());
-        root.addView(settingsNavRow("Поддерживаемые игры", new View.OnClickListener() {
+        // Expressive Card Container for settings options
+        LinearLayout card = Ui.col(this);
+        card.setBackground(Ui.shape(this, Ui.SURFACE, 24f, Ui.BORDER_SOFT, 1.2f));
+        card.setPadding(Ui.dp(this, 16), Ui.dp(this, 8), Ui.dp(this, 16), Ui.dp(this, 8));
+
+        card.addView(settingsSwitchRow());
+        card.addView(settingsDivider());
+        card.addView(settingsTimeoutRow());
+        card.addView(settingsDivider());
+        card.addView(settingsNavRow("Поддерживаемые игры", new View.OnClickListener() {
             @Override public void onClick(View v) {
                 try {
                     startActivity(SetupActivity.gameSettingsIntent());
@@ -1876,18 +2390,21 @@ public class Main extends Activity {
                 }
             }
         }));
-        root.addView(settingsNavRow("Первичная настройка", new View.OnClickListener() {
+        card.addView(settingsDivider());
+        card.addView(settingsNavRow("Первичная настройка", new View.OnClickListener() {
             @Override public void onClick(View v) {
                 prefs.edit().putBoolean("setup_done", false).apply();
                 startActivity(new Intent(Main.this, SetupActivity.class));
             }
         }));
 
-        TextView about = Ui.text(this, "GC Tune 1.0 · канал Game Cube", 11f, Ui.MUTED);
+        root.addView(card, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView about = Ui.text(this, "GC Tune 1.0 · канал Game Cube", 12f, Ui.MUTED);
         about.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams aboutLp = new LinearLayout.LayoutParams(-2, -2);
         aboutLp.gravity = Gravity.CENTER_HORIZONTAL;
-        aboutLp.topMargin = Ui.dp(this, 24);
+        aboutLp.topMargin = Ui.dp(this, 28);
         root.addView(about, aboutLp);
         return scroll;
     }
@@ -1899,12 +2416,7 @@ public class Main extends Activity {
 
         Switch sw = new Switch(this);
         sw.setChecked(prefs.getBoolean("require_game", true));
-        sw.setThumbTintList(new android.content.res.ColorStateList(
-                new int[][]{{android.R.attr.state_checked}, new int[]{}},
-                new int[]{Ui.ACCENT, Ui.MUTED}));
-        sw.setTrackTintList(new android.content.res.ColorStateList(
-                new int[][]{{android.R.attr.state_checked}, new int[]{}},
-                new int[]{Ui.PRIMARY, 0x553D7D56}));
+        tintSwitch(sw);
         sw.setOnCheckedChangeListener(new android.widget.CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(android.widget.CompoundButton btn, boolean checked) {
@@ -1913,6 +2425,11 @@ public class Main extends Activity {
         });
         row.addView(sw);
         return row;
+    }
+
+    /** Material 3 Expressive styled Switch across the app. */
+    private void tintSwitch(Switch sw) {
+        Ui.applyM3Switch(sw);
     }
 
     private View settingsTimeoutRow() {
@@ -1939,6 +2456,8 @@ public class Main extends Activity {
 
     private View settingsNavRow(String label, View.OnClickListener onClick) {
         LinearLayout row = settingsRowBase();
+        row.setBackground(Ui.ripple(this, 0x00000000, 12f, 0x3382E5A6));
+        row.setPadding(Ui.dp(this, 10), Ui.dp(this, 15), Ui.dp(this, 10), Ui.dp(this, 15));
         row.addView(Ui.text(this, label, 14f, Ui.TEXT),
                 new LinearLayout.LayoutParams(0, -2, 1f));
 
@@ -1947,7 +2466,12 @@ public class Main extends Activity {
         chevron.setScaleType(ImageView.ScaleType.FIT_CENTER);
         row.addView(chevron, new LinearLayout.LayoutParams(-2, -2));
 
-        row.setOnClickListener(onClick);
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Ui.tap(v);
+                onClick.onClick(v);
+            }
+        });
         row.setClickable(true);
         return row;
     }
@@ -1957,6 +2481,17 @@ public class Main extends Activity {
         row.setPadding(0, Ui.dp(this, 15), 0, Ui.dp(this, 15));
         row.setMinimumHeight(Ui.dp(this, 30));
         return row;
+    }
+
+    /** Hairline separator between settings rows (inset like the row text). */
+    private View settingsDivider() {
+        View v = new View(this);
+        v.setBackgroundColor(Ui.BORDER_SOFT);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, Ui.dp(this, 1));
+        lp.leftMargin = Ui.dp(this, 2);
+        lp.rightMargin = Ui.dp(this, 2);
+        v.setLayoutParams(lp);
+        return v;
     }
 
     private void storeSettingsTimeout() {
@@ -1971,6 +2506,1133 @@ public class Main extends Activity {
         if (v > 90) v = 90;
         prefs.edit().putInt("timeout_sec", v).apply();
     }
+
+    // ------------------------------------------------------ customization hub
+    /** Hub page: big blocks that open each section as its own activity. */
+    private View buildCustomPage() {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setBackgroundColor(Ui.BG);
+
+        LinearLayout root = Ui.col(this);
+        root.setPadding(Ui.dp(this, 18), Ui.dp(this, 22), Ui.dp(this, 18), Ui.dp(this, 30));
+        scroll.addView(root, new FrameLayout.LayoutParams(-1, -2));
+
+        root.addView(pageTitle(Ui.label(this, "Кастомизация", 26f, Ui.TEXT),
+                "Тема, иконки и фон"));
+
+        root.addView(customBlock(M3Icons.palette(Ui.ACCENT, Ui.dp(this, 24)),
+                "Тема", "Установка .itz", ThemeActivity.class));
+        root.addView(customBlock(M3Icons.grid(Ui.ACCENT, Ui.dp(this, 24)),
+                "Иконки", "Перекраска и паки", IconsActivity.class));
+        root.addView(customBlock(M3Icons.font(Ui.ACCENT, Ui.dp(this, 24)),
+                "Шрифты", "Системные шрифты", FontActivity.class));
+        root.addView(customBlock(M3Icons.shield(Ui.ACCENT, Ui.dp(this, 24)),
+                "Прочее", "Защита фона и ADB-мост", MiscActivity.class));
+        return scroll;
+    }
+
+    /** Big launcher-style card: expressive capsule icon tile + title + subtitle + chevron. */
+    private View customBlock(M3Icons.Icon icon, String title, String sub,
+                             final Class<? extends Activity> target) {
+        LinearLayout card = Ui.row(this);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        // Expressive Card Container: 24dp radius, subtle micro-contrast border
+        card.setBackground(Ui.ripple(this, Ui.SURFACE, 24f, 0x406CE5A8));
+        card.setPadding(Ui.dp(this, 16), Ui.dp(this, 15), Ui.dp(this, 16), Ui.dp(this, 15));
+        card.setElevation(Ui.dp(this, 2));
+
+        FrameLayout tile = new FrameLayout(this);
+        // Expressive pill / capsule shape for icon tile
+        tile.setBackground(Ui.pillShape(this, Ui.PRIMARY, 0, 0));
+        ImageView ic = new ImageView(this);
+        ic.setImageDrawable(icon);
+        ic.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        tile.addView(ic, new FrameLayout.LayoutParams(
+                Ui.dp(this, 24), Ui.dp(this, 24), Gravity.CENTER));
+        card.addView(tile, new LinearLayout.LayoutParams(
+                Ui.dp(this, 50), Ui.dp(this, 50)));
+
+        LinearLayout col = Ui.col(this);
+        col.addView(Ui.label(this, title, 16.5f, Ui.TEXT));
+        TextView subT = Ui.text(this, sub, 12f, Ui.MUTED);
+        LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(-2, -2);
+        subLp.topMargin = Ui.dp(this, 3);
+        col.addView(subT, subLp);
+        LinearLayout.LayoutParams colLp = new LinearLayout.LayoutParams(0, -2, 1f);
+        colLp.leftMargin = Ui.dp(this, 15);
+        colLp.rightMargin = Ui.dp(this, 8);
+        card.addView(col, colLp);
+
+        ImageView chev = new ImageView(this);
+        chev.setImageDrawable(M3Icons.chevron(Ui.MUTED, Ui.dp(this, 20)));
+        chev.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        card.addView(chev, new LinearLayout.LayoutParams(-2, -2));
+
+        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(-1, -2);
+        cardLp.topMargin = Ui.dp(this, 12);
+        card.setLayoutParams(cardLp);
+
+        card.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Ui.tap(v);
+                startActivity(new Intent(Main.this, target));
+                overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+            }
+        });
+        return card;
+    }
+
+    /** Font installation page ported 1:1 from the fork. */
+    private View buildFontPage() {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setBackgroundColor(Ui.BG);
+
+        LinearLayout root = Ui.col(this);
+        root.setPadding(Ui.dp(this, 18), Ui.dp(this, 22), Ui.dp(this, 18), Ui.dp(this, 30));
+        scroll.addView(root, new FrameLayout.LayoutParams(-1, -2));
+
+        TextView title = Ui.label(this, "Шрифты", 26f, Ui.TEXT);
+        root.addView(pageTitle(title, "Замена TTF в /data/vfonts"));
+
+        fontThemeHint = hintCard();
+        fontThemeHint.setVisibility(View.GONE);
+        LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(-1, -2);
+        hintLp.bottomMargin = Ui.dp(this, 14);
+        root.addView(fontThemeHint, hintLp);
+
+        // ---- file card
+        LinearLayout fileCard = Ui.col(this);
+        fileCard.setBackground(Ui.shape(this, Ui.SURFACE, 12f, Ui.BORDER_SOFT, 1f));
+        fileCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14));
+        fileCard.addView(Ui.section(this, "Файл шрифта (.ttf)"));
+
+        fontThemeFileText = Ui.text(this, "файл не выбран", 14f, Ui.TEXT);
+        LinearLayout.LayoutParams fileLp = new LinearLayout.LayoutParams(-2, -2);
+        fileLp.topMargin = Ui.dp(this, 8);
+        fileCard.addView(fontThemeFileText, fileLp);
+
+        View choose = pillButton(M3Icons.folder(Ui.ACCENT, Ui.dp(this, 18)), "Выбрать .ttf",
+                new View.OnClickListener() {
+                    @Override public void onClick(View v) { pickFontFile(); }
+                });
+        LinearLayout.LayoutParams chooseLp = new LinearLayout.LayoutParams(-1, -2);
+        chooseLp.topMargin = Ui.dp(this, 12);
+        fileCard.addView(choose, chooseLp);
+
+        LinearLayout.LayoutParams fileCardLp = new LinearLayout.LayoutParams(-1, -2);
+        fileCardLp.bottomMargin = Ui.dp(this, 14);
+        root.addView(fileCard, fileCardLp);
+
+        // ---- install button
+        View install = pillButton(M3Icons.play(Ui.ACCENT, Ui.dp(this, 18)),
+                "Установить и открыть iTheme",
+                new View.OnClickListener() {
+                    @Override public void onClick(View v) { runFontInstall(); }
+                });
+        fontInstallBtn = install;
+        LinearLayout.LayoutParams installLp = new LinearLayout.LayoutParams(-1, -2);
+        installLp.bottomMargin = Ui.dp(this, 14);
+        root.addView(install, installLp);
+
+        // ---- status card
+        LinearLayout statusCard = Ui.col(this);
+        statusCard.setBackground(Ui.shape(this, Ui.INPUT_BG, 12f, Ui.BORDER, 1.2f));
+        statusCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 14), Ui.dp(this, 12));
+        fontThemeStatusText = Ui.text(this, "Выберите .ttf и нажмите «Установить»", 13f, Ui.MUTED);
+        statusCard.addView(fontThemeStatusText);
+        LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(-1, -2);
+        statusLp.bottomMargin = Ui.dp(this, 14);
+        root.addView(statusCard, statusLp);
+
+        TextView note = Ui.text(this,
+                "Копия — в Download/gctune. Перед заменой создаются бэкапы .bak.", 11.5f, Ui.MUTED);
+        LinearLayout.LayoutParams noteLp = new LinearLayout.LayoutParams(-1, -2);
+        noteLp.bottomMargin = Ui.dp(this, 24);
+        root.addView(note, noteLp);
+
+        return scroll;
+    }
+
+    private void pickFontFile() {
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+                "application/octet-stream", "font/ttf", "application/x-font-ttf", "*/*"});
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        try {
+            startActivityForResult(Intent.createChooser(intent, "Файл шрифта (.ttf)"), REQ_PICK_FONT);
+        } catch (Throwable t) {
+            toast("Проводник недоступен");
+        }
+    }
+
+    private void fontStatus(String msg, int color) {
+        if (fontThemeStatusText != null) {
+            fontThemeStatusText.setText(msg);
+            fontThemeStatusText.setTextColor(color);
+        }
+    }
+
+    private void showFontHint() {
+        if (fontThemeHint != null) {
+            fontThemeHint.setVisibility(View.VISIBLE);
+            if (fontHintPulse == null) {
+                fontHintPulse = ObjectAnimator.ofFloat(fontThemeHint, View.ALPHA, 1f, 0.35f);
+                fontHintPulse.setDuration(700L);
+                fontHintPulse.setRepeatCount(ValueAnimator.INFINITE);
+                fontHintPulse.setRepeatMode(ValueAnimator.REVERSE);
+            }
+            fontHintPulse.start();
+        }
+    }
+
+    private void hideFontHint() {
+        if (fontHintPulse != null) fontHintPulse.cancel();
+        if (fontThemeHint != null) {
+            fontThemeHint.setAlpha(1f);
+            fontThemeHint.setVisibility(View.GONE);
+        }
+    }
+
+    private void runFontInstall() {
+        if (busy) {
+            toast("Дождитесь текущей команды");
+            return;
+        }
+        if (fontStaging) {
+            toast("Файл ещё готовится — подождите");
+            return;
+        }
+        if (fontStagedPath == null || fontStagedPath.isEmpty()) {
+            toast("Сначала выберите .ttf");
+            return;
+        }
+        fontThemeRun = true;
+        fontStatus("Команда отправлена — откройте режим игры…", Ui.ACCENT);
+        showFontHint();
+        String cmd = fontCommand();
+        if (!apply(cmd)) {
+            fontThemeRun = false;
+            hideFontHint();
+            fontStatus("GC Tune не в списке игр — добавьте приложение и повторите", Ui.ERROR);
+        }
+    }
+
+    private String fontCommand() {
+        return FontInstaller.command(fontStagedPath, fontStagedMd5);
+    }
+
+    /** Turns the uid 1000 output of the font command into a human status line. */
+    private void fontResult(boolean ok, Entry e) {
+        fontThemeRun = false;
+        hideFontHint();
+        String out = (ok && e != null && e.out != null) ? e.out : "";
+        if (!ok) {
+            fontStatus("Нет ответа от uid 1000 — откройте режим игры и повторите", Ui.ERROR);
+        } else if (out.contains("SRC_UNREADABLE")) {
+            fontStatus("uid 1000 не может прочитать файл-источник", Ui.ERROR);
+        } else if (out.contains("SRC_STALE")) {
+            fontStatus("Источник не совпадает с выбранным файлом — повторите выбор", Ui.ERROR);
+        } else if (out.contains("NO_FONT_FOUND")) {
+            fontStatus("В /data/vfonts/ нет доступных TTF-файлов. Скачайте шрифт в iTheme и повторите.", Ui.ERROR);
+        } else if (out.contains("FAIL:MISSING_TTF:") && !out.contains("OK:")) {
+            fontStatus("TTF-файл исчез во время установки. Повторите поиск. Подробности во вкладке Shell.", Ui.ERROR);
+        } else if (out.contains("NO_PKG")) {
+            fontStatus("Пакет iTheme определить не удалось — подробности в консоли", Ui.ERROR);
+        } else if (!out.contains("OK:")) {
+            fontStatus("Запись не удалась — вывод в консоли (вкладка Shell)", Ui.ERROR);
+        } else {
+            int okCount = countOccurrences(out, "OK:");
+            int failCount = countOccurrences(out, "FAIL:");
+            String msg = "Заменено файлов: " + okCount
+                    + (failCount > 0 ? ", ошибок: " + failCount : "");
+            if (out.contains("APP_FAILED")) {
+                fontStatus(msg + " — iTheme не открылся, вывод в консоли", Ui.ERROR);
+            } else if (out.contains("APP_OPENED")) {
+                fontStatus(msg + ", iTheme открыт — примените шрифт и перезагрузитесь — применяйте тему", Ui.ACCENT);
+            } else {
+                fontStatus(msg + " — подробности в консоли", Ui.TEXT);
+            }
+        }
+    }
+
+    /** Mirrors stageThemeFile: direct path if readable, else copy to a known location. */
+    private void stageFontFile(final Uri src) {
+        if (src == null) return;
+        if (fontStaging) {
+            toast("Файл ещё готовится");
+            return;
+        }
+        fontStaging = true;
+        fontStagedPath = null;
+        fontStagedMd5 = null;
+        fontStatus("Читаю файл…", Ui.MUTED);
+        final String picked = queryDisplayName(src);
+        if (fontThemeFileText != null) fontThemeFileText.setText("подготовка…");
+
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    String path = null;
+                    String md5 = null;
+
+                    String real = resolveRealPath(src);
+                    if (real != null && real.startsWith("/")
+                            && (real.startsWith("/storage/") || real.startsWith("/sdcard/"))
+                            && !real.contains("/Android/") && new File(real).isFile()) {
+                        try {
+                            md5 = md5File(new File(real));
+                            path = real;
+                        } catch (Throwable t) {
+                            path = null;
+                        }
+                    }
+
+                    if (path == null) {
+                        String staged = null;
+                        Throwable firstErr = null;
+                        if (Build.VERSION.SDK_INT >= 29) {
+                            try {
+                                staged = copyFontToDownloads(src);
+                            } catch (Throwable t) {
+                                firstErr = t;
+                            }
+                        }
+                        if (staged == null) {
+                            try {
+                                staged = copyFontToAppFiles(src);
+                            } catch (Throwable t) {
+                                if (firstErr == null) firstErr = t;
+                            }
+                        }
+                        if (staged == null) {
+                            throw firstErr != null ? firstErr : new Exception("копирование не удалось");
+                        }
+                        md5 = md5File(new File(staged));
+                        path = staged;
+                    }
+
+                    // Validate TrueType font 1:1 from the fork
+                    File f = new File(path);
+                    FontInstaller.validate(f);
+
+                    final String fp = path;
+                    final String fm = md5;
+                    final long size = f.length();
+                    final String sizeTxt = humanSize(size);
+
+                    h.post(new Runnable() {
+                        @Override public void run() {
+                            fontStaging = false;
+                            fontStagedPath = fp;
+                            fontStagedMd5 = fm;
+                            fontStagedBytes = size;
+                            fontThemeFileText.setText(picked + " · " + sizeTxt + "\n" + fp);
+                            fontStatus("Файл готов, md5 " + fm + " — можно устанавливать", Ui.TEXT);
+                        }
+                    });
+                } catch (final Throwable t) {
+                    h.post(new Runnable() {
+                        @Override public void run() {
+                            fontStaging = false;
+                            fontStagedPath = null;
+                            fontStagedMd5 = null;
+                            fontThemeFileText.setText("файл не выбран");
+                            fontStatus("Ошибка подготовки: " + t.getMessage(), Ui.ERROR);
+                        }
+                    });
+                }
+            }
+        }).start();
+    }
+
+    /** Copy into Download/gctune/font.ttf — the location uid 1000 can read. */
+    private String copyFontToDownloads(Uri src) throws Exception {
+        String rel = Environment.DIRECTORY_DOWNLOADS + "/" + FONT_STAGE_DIR;
+
+        // a previous font.ttf would make MediaStore rename the row ("font (1).ttf")
+        Cursor old = cr.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                new String[]{MediaStore.MediaColumns._ID},
+                MediaStore.MediaColumns.DISPLAY_NAME + "=? AND "
+                        + MediaStore.MediaColumns.RELATIVE_PATH + "=?",
+                new String[]{FONT_STAGE_NAME, rel + "/"}, null);
+        if (old != null) {
+            while (old.moveToNext()) {
+                try {
+                    cr.delete(ContentUris.withAppendedId(
+                            MediaStore.Downloads.EXTERNAL_CONTENT_URI, old.getLong(0)), null, null);
+                } catch (Throwable ignored) {}
+            }
+            old.close();
+        }
+
+        ContentValues cv = new ContentValues();
+        cv.put(MediaStore.MediaColumns.DISPLAY_NAME, FONT_STAGE_NAME);
+        cv.put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream");
+        cv.put(MediaStore.MediaColumns.RELATIVE_PATH, rel);
+        Uri dst = cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+        if (dst == null) throw new Exception("MediaStore insert failed");
+        try (InputStream in = cr.openInputStream(src)) {
+            if (in == null) throw new Exception("источник недоступен");
+            try (OutputStream out = cr.openOutputStream(dst)) {
+                if (out == null) throw new Exception("хранилище недоступно");
+                byte[] buf = new byte[64 * 1024];
+                int n;
+                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            }
+        }
+        String path = null;
+        Cursor q = cr.query(dst, new String[]{MediaStore.MediaColumns.DATA}, null, null, null);
+        if (q != null) {
+            if (q.moveToFirst()) path = q.getString(0);
+            q.close();
+        }
+        if (path == null || path.isEmpty()) {
+            File dl = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+            path = new File(dl, FONT_STAGE_DIR + "/" + FONT_STAGE_NAME).getAbsolutePath();
+        }
+        return path;
+    }
+
+    private String copyFontToAppFiles(Uri src) throws Exception {
+        File dir = getExternalFilesDir(null);
+        if (dir == null) dir = getFilesDir();
+        File dst = new File(dir, FONT_STAGE_NAME);
+        try (InputStream in = cr.openInputStream(src);
+             OutputStream out = new FileOutputStream(dst)) {
+            byte[] buf = new byte[64 * 1024];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+        }
+        return dst.getAbsolutePath();
+    }
+
+    // ----------------------------------------------------------------- misc
+    private static final String ADB_EXAMPLES =
+            "# команда через канал uid1000\n"
+            + "adb shell content call --uri content://com.poc.gctune.bridge --method exec --arg \"id\" --extra wait:i:8\n\n"
+            + "# результат: ack|STATUS|rc|base64\n"
+            + "adb shell settings get secure gc_tune_adb_out\n\n"
+            + "# или скрипт из репозитория\n"
+            + ".\\gctune-adb.ps1 \"id\"";
+
+    /** Whitelist + appops + standby for ANY package, applied via uid1000. */
+    private String hardenCommand(String pkg) {
+        return "cmd deviceidle whitelist +" + pkg + " >/dev/null 2>&1;"
+                + "dumpsys deviceidle whitelist +" + pkg + " >/dev/null 2>&1;"
+                + "cmd appops set " + pkg + " RUN_IN_BACKGROUND allow >/dev/null 2>&1;"
+                + "cmd appops set " + pkg + " RUN_ANY_IN_BACKGROUND allow >/dev/null 2>&1;"
+                + "cmd appops set " + pkg + " START_FOREGROUND allow >/dev/null 2>&1;"
+                + "am set-inactive " + pkg + " false >/dev/null 2>&1;"
+                + "[ -f /data/bbkcore/forbidBgStartAppsName.txt ] && sed -i '/" + pkg + "/d' /data/bbkcore/forbidBgStartAppsName.txt 2>/dev/null;"
+                + "echo DOZE=$(cmd deviceidle whitelist =" + pkg + " 2>/dev/null);"
+                + "echo BGOP=$(appops get " + pkg + " RUN_ANY_IN_BACKGROUND 2>/dev/null)";
+    }
+
+    /** Remove package from whitelist and reset background restrictions. */
+    private String unhardenCommand(String pkg) {
+        return "cmd deviceidle whitelist -" + pkg + " >/dev/null 2>&1;"
+                + "dumpsys deviceidle whitelist -" + pkg + " >/dev/null 2>&1;"
+                + "cmd appops set " + pkg + " RUN_IN_BACKGROUND default >/dev/null 2>&1;"
+                + "cmd appops set " + pkg + " RUN_ANY_IN_BACKGROUND default >/dev/null 2>&1;"
+                + "echo DOZE=$(cmd deviceidle whitelist =" + pkg + " 2>/dev/null)";
+    }
+
+    /**
+     * Soft-but-deep freeze of any package via uid1000: kill its background,
+     * cut background launch, then suspend it (disable-user as a fallback).
+     * Read-back: SUSP=1 suspended, DIS=1 disabled.
+     */
+    private String freezeCommand(String pkg) {
+        return "cmd deviceidle whitelist -" + pkg + " >/dev/null 2>&1;"
+                + "am kill " + pkg + ";"
+                + "am set-inactive " + pkg + " true;"
+                + "cmd appops set " + pkg + " RUN_ANY_IN_BACKGROUND ignore >/dev/null 2>&1;"
+                + "cmd appops set " + pkg + " RUN_IN_BACKGROUND ignore >/dev/null 2>&1;"
+                + "pm suspend " + pkg + " >/dev/null 2>&1 || "
+                + "pm disable-user --user 0 " + pkg + " >/dev/null 2>&1;"
+                + "echo SUSP=$(dumpsys package " + pkg + " | grep -c suspended=true);"
+                + "echo DIS=$(pm list packages -d | grep -cx package:" + pkg + ")";
+    }
+
+    /** Reverses freezeCommand: unsuspend/enable + allow background again. */
+    private String unfreezeCommand(String pkg) {
+        return "pm unsuspend " + pkg + " >/dev/null 2>&1;"
+                + "pm enable " + pkg + " >/dev/null 2>&1;"
+                + "cmd deviceidle whitelist +" + pkg + " >/dev/null 2>&1;"
+                + "cmd appops set " + pkg + " RUN_ANY_IN_BACKGROUND allow >/dev/null 2>&1;"
+                + "cmd appops set " + pkg + " RUN_IN_BACKGROUND allow >/dev/null 2>&1;"
+                + "am set-inactive " + pkg + " false >/dev/null 2>&1;"
+                + "echo SUSP=$(dumpsys package " + pkg + " | grep -c suspended=true);"
+                + "echo DIS=$(pm list packages -d | grep -cx package:" + pkg + ")";
+    }
+
+    private View buildMiscPage() {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setBackgroundColor(Ui.BG);
+
+        LinearLayout root = Ui.col(this);
+        root.setPadding(Ui.dp(this, 18), Ui.dp(this, 22), Ui.dp(this, 18), Ui.dp(this, 30));
+        scroll.addView(root, new FrameLayout.LayoutParams(-1, -2));
+
+        root.addView(pageTitle(Ui.label(this, "Прочее", 26f, Ui.TEXT),
+                "Живучесть фона и ADB-мост"));
+
+        // ---- unkillable background: pick any installed app, toggle protection & freeze
+        LinearLayout keepCard = Ui.col(this);
+        keepCard.setBackground(Ui.shape(this, Ui.SURFACE, 24f, Ui.BORDER_SOFT, 1.2f));
+        keepCard.setPadding(Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16));
+        keepCard.addView(Ui.section(this, "Защита приложений от выгрузки"));
+
+        TextView desc = Ui.text(this,
+                "Добавление в белый список батареи Doze (cmd deviceidle whitelist) + разрешение фоновой работы без ограничений.",
+                11.5f, Ui.MUTED);
+        LinearLayout.LayoutParams descLp = new LinearLayout.LayoutParams(-1, -2);
+        descLp.topMargin = Ui.dp(this, 4);
+        keepCard.addView(desc, descLp);
+
+        // Current target row with toggle
+        LinearLayout targetBox = Ui.row(this);
+        targetBox.setGravity(Gravity.CENTER_VERTICAL);
+        targetBox.setBackground(Ui.shape(this, Ui.INPUT_BG, 18f, Ui.BORDER, 1f));
+        targetBox.setPadding(Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 14), Ui.dp(this, 12));
+
+        LinearLayout targetCol = Ui.col(this);
+        miscHardenTarget = Ui.text(this, "Цель: GC Tune", 14f, Ui.TEXT);
+        targetCol.addView(miscHardenTarget);
+        TextView targetSub = Ui.text(this, "Нажмите «Выбрать из списка» для смены", 11f, Ui.MUTED);
+        LinearLayout.LayoutParams tsLp = new LinearLayout.LayoutParams(-1, -2);
+        tsLp.topMargin = Ui.dp(this, 2);
+        targetCol.addView(targetSub, tsLp);
+        targetBox.addView(targetCol, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        targetSw = new Switch(this);
+        boolean isProtected = prefs.getBoolean("pkg_protected_" + hardenPkg(), PKG.equals(hardenPkg()));
+        targetSw.setChecked(isProtected);
+        tintSwitch(targetSw);
+        targetSw.setOnCheckedChangeListener(new android.widget.CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(android.widget.CompoundButton b, boolean on) {
+                Ui.tap(b);
+                String p = hardenPkg();
+                prefs.edit().putBoolean("pkg_protected_" + p, on).apply();
+                if (on) runHarden(); else runUnharden();
+            }
+        });
+        targetBox.addView(targetSw);
+
+        LinearLayout.LayoutParams tbLp = new LinearLayout.LayoutParams(-1, -2);
+        tbLp.topMargin = Ui.dp(this, 12);
+        keepCard.addView(targetBox, tbLp);
+
+        LinearLayout btnRow = Ui.row(this);
+        View pickBtn = pillButton(M3Icons.folder(Ui.ACCENT, Ui.dp(this, 18)),
+                "Список приложений",
+                new View.OnClickListener() {
+                    @Override public void onClick(View v) { pickHardenApp(); }
+                });
+        btnRow.addView(pickBtn, new LinearLayout.LayoutParams(0, -2, 1f));
+        View frzBtn = pillButton(M3Icons.stop(Ui.ACCENT, Ui.dp(this, 18)),
+                "Заморозить",
+                new View.OnClickListener() {
+                    @Override public void onClick(View v) { freezeRun(); }
+                });
+        LinearLayout.LayoutParams frzLp = new LinearLayout.LayoutParams(0, -2, 1f);
+        frzLp.leftMargin = Ui.dp(this, 10);
+        btnRow.addView(frzBtn, frzLp);
+        LinearLayout.LayoutParams btnRowLp = new LinearLayout.LayoutParams(-1, -2);
+        btnRowLp.topMargin = Ui.dp(this, 12);
+        keepCard.addView(btnRow, btnRowLp);
+
+        miscHardenStatus = Ui.text(this, "", 11.5f, Ui.MUTED);
+        LinearLayout.LayoutParams hardenStLp = new LinearLayout.LayoutParams(-1, -2);
+        hardenStLp.topMargin = Ui.dp(this, 8);
+        keepCard.addView(miscHardenStatus, hardenStLp);
+
+        LinearLayout keepRow = Ui.row(this);
+        keepRow.addView(Ui.label(this, "Своя служба в фоне", 14f, Ui.TEXT),
+                new LinearLayout.LayoutParams(0, -2, 1f));
+
+        keepSwitch = new Switch(this);
+        keepSwitch.setChecked(prefs.getBoolean("keep_alive", false));
+        tintSwitch(keepSwitch);
+        keepSwitch.setOnCheckedChangeListener(
+                new android.widget.CompoundButton.OnCheckedChangeListener() {
+                    @Override
+                    public void onCheckedChanged(android.widget.CompoundButton b, boolean on) {
+                        Ui.tap(b);
+                        setKeepAlive(on);
+                    }
+                });
+        keepRow.addView(keepSwitch);
+        LinearLayout.LayoutParams keepRowLp = new LinearLayout.LayoutParams(-1, -2);
+        keepRowLp.topMargin = Ui.dp(this, 14);
+        keepCard.addView(keepRow, keepRowLp);
+
+        miscKeepStatus = Ui.text(this, "", 11.5f, Ui.MUTED);
+        LinearLayout.LayoutParams keepStLp = new LinearLayout.LayoutParams(-1, -2);
+        keepStLp.topMargin = Ui.dp(this, 6);
+        keepCard.addView(miscKeepStatus, keepStLp);
+
+        LinearLayout.LayoutParams keepCardLp = new LinearLayout.LayoutParams(-1, -2);
+        keepCardLp.bottomMargin = Ui.dp(this, 14);
+        root.addView(keepCard, keepCardLp);
+
+        // ---- adb bridge card
+        LinearLayout bridgeCard = Ui.col(this);
+        bridgeCard.setBackground(Ui.shape(this, Ui.SURFACE, 24f, Ui.BORDER_SOFT, 1.2f));
+        bridgeCard.setPadding(Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16));
+        bridgeCard.addView(Ui.section(this, "ADB-мост"));
+
+        LinearLayout bridgeRow = Ui.row(this);
+        LinearLayout bridgeLbl = Ui.col(this);
+        bridgeLbl.addView(Ui.label(this, "Команды по ADB", 14f, Ui.TEXT));
+        TextView bridgeSub = Ui.text(this, "Только adb shell и root", 11.5f, Ui.MUTED);
+        LinearLayout.LayoutParams bridgeSubLp = new LinearLayout.LayoutParams(-1, -2);
+        bridgeSubLp.topMargin = Ui.dp(this, 3);
+        bridgeLbl.addView(bridgeSub, bridgeSubLp);
+        bridgeRow.addView(bridgeLbl, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        bridgeSwitch = new Switch(this);
+        bridgeSwitch.setChecked(prefs.getBoolean("adb_bridge", true));
+        tintSwitch(bridgeSwitch);
+        bridgeSwitch.setOnCheckedChangeListener(
+                new android.widget.CompoundButton.OnCheckedChangeListener() {
+                    @Override
+                    public void onCheckedChanged(android.widget.CompoundButton b, boolean on) {
+                        Ui.tap(b);
+                        prefs.edit().putBoolean("adb_bridge", on).apply();
+                        updateMiscStatus();
+                    }
+                });
+        bridgeRow.addView(bridgeSwitch);
+        LinearLayout.LayoutParams bridgeRowLp = new LinearLayout.LayoutParams(-1, -2);
+        bridgeRowLp.topMargin = Ui.dp(this, 10);
+        bridgeCard.addView(bridgeRow, bridgeRowLp);
+
+        miscBridgeStatus = Ui.text(this, "", 11.5f, Ui.MUTED);
+        LinearLayout.LayoutParams bridgeStLp = new LinearLayout.LayoutParams(-1, -2);
+        bridgeStLp.topMargin = Ui.dp(this, 8);
+        bridgeCard.addView(miscBridgeStatus, bridgeStLp);
+
+        // command examples (monospace, selectable)
+        LinearLayout exCard = Ui.col(this);
+        exCard.setBackground(Ui.shape(this, Ui.INPUT_BG, 10f, Ui.BORDER, 1f));
+        exCard.setPadding(Ui.dp(this, 10), Ui.dp(this, 9), Ui.dp(this, 10), Ui.dp(this, 9));
+        TextView ex = Ui.text(this, ADB_EXAMPLES, 10.5f, Ui.PROMPT);
+        ex.setTypeface(Typeface.MONOSPACE);
+        ex.setTextIsSelectable(true);
+        exCard.addView(ex);
+        LinearLayout.LayoutParams exLp = new LinearLayout.LayoutParams(-1, -2);
+        exLp.topMargin = Ui.dp(this, 10);
+        bridgeCard.addView(exCard, exLp);
+
+        View copyEx = pillButton(M3Icons.clipboard(Ui.ACCENT, Ui.dp(this, 18)),
+                "Копировать команды",
+                new View.OnClickListener() {
+                    @Override public void onClick(View v) {
+                        try {
+                            android.content.ClipboardManager cl =
+                                    (android.content.ClipboardManager)
+                                            getSystemService(CLIPBOARD_SERVICE);
+                            cl.setPrimaryClip(android.content.ClipData.newPlainText(
+                                    "GC Tune ADB", ADB_EXAMPLES));
+                            toast("Команды скопированы");
+                        } catch (Throwable t) {
+                            toast("Не удалось скопировать");
+                        }
+                    }
+                });
+        LinearLayout.LayoutParams copyExLp = new LinearLayout.LayoutParams(-1, -2);
+        copyExLp.topMargin = Ui.dp(this, 10);
+        bridgeCard.addView(copyEx, copyExLp);
+
+        TextView bridgeWarn = Ui.text(this, "Включайте только на время работы.", 11f, Ui.MUTED);
+        LinearLayout.LayoutParams warnLp = new LinearLayout.LayoutParams(-1, -2);
+        warnLp.topMargin = Ui.dp(this, 10);
+        bridgeCard.addView(bridgeWarn, warnLp);
+
+        root.addView(bridgeCard, new LinearLayout.LayoutParams(-1, -2));
+
+        updateMiscStatus();
+        return scroll;
+    }
+
+    /** Toggle: sticky foreground service + watchdog alarm for GC Tune itself. */
+    private void setKeepAlive(boolean on) {
+        prefs.edit().putBoolean("keep_alive", on).apply();
+        if (on) {
+            KeepAliveReceiver.schedule(this,
+                    System.currentTimeMillis() + KeepAliveReceiver.INTERVAL);
+            KeepAliveService.start(this);
+        } else {
+            KeepAliveReceiver.cancel(this);
+            KeepAliveService.stop(this);
+        }
+        updateMiscStatus();
+    }
+
+    /** One entry of the themed app picker: label, package, launcher icon. */
+    private static final class AppRow {
+        final String label, pkg;
+        final Drawable icon;
+        AppRow(String label, String pkg, Drawable icon) {
+            this.label = label;
+            this.pkg = pkg;
+            this.icon = icon;
+        }
+    }
+
+    /**
+     * Themed app picker: rounded dialog, live search, icon rows, current target
+     * highlighted. Picking a row stores it and hardens it at once.
+     */
+    private void pickHardenApp() {
+        try {
+            final Dialog dlg = new Dialog(this);
+            dlg.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+            final LinearLayout body = Ui.col(this);
+            body.setBackground(Ui.shape(this, Ui.SURFACE, 18f, Ui.BORDER_SOFT, 1f));
+            int pad = Ui.dp(this, 14);
+            body.setPadding(pad, pad, pad, pad);
+
+            body.addView(Ui.section(this, "Приложение"));
+
+            final EditText q = new EditText(this);
+            q.setHint("Поиск");
+            q.setHintTextColor(Ui.MUTED);
+            q.setTextColor(Ui.TEXT);
+            q.setTextSize(14f);
+            q.setSingleLine(true);
+            q.setBackground(Ui.shape(this, Ui.INPUT_BG, 10f, Ui.BORDER, 1f));
+            q.setPadding(Ui.dp(this, 10), Ui.dp(this, 5), Ui.dp(this, 10), Ui.dp(this, 5));
+            LinearLayout.LayoutParams qLp = new LinearLayout.LayoutParams(-1, -2);
+            qLp.topMargin = Ui.dp(this, 10);
+            body.addView(q, qLp);
+
+            final ScrollView sc = new ScrollView(this);
+            sc.setVerticalScrollBarEnabled(false);
+            sc.setPadding(0, Ui.dp(this, 8), 0, 0);
+            final LinearLayout list = Ui.col(this);
+            sc.addView(list);
+            body.addView(sc, new LinearLayout.LayoutParams(-1, Ui.dp(this, 380)));
+
+            FrameLayout wrap = new FrameLayout(this);
+            wrap.setPadding(Ui.dp(this, 22), 0, Ui.dp(this, 22), 0);
+            wrap.addView(body, new FrameLayout.LayoutParams(-1, -2));
+            dlg.setContentView(wrap);
+            Window w = dlg.getWindow();
+            if (w != null) {
+                w.setBackgroundDrawable(
+                        new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+                w.setLayout(WindowManager.LayoutParams.MATCH_PARENT,
+                        WindowManager.LayoutParams.WRAP_CONTENT);
+                w.setDimAmount(0.55f);
+            }
+
+            final List<AppRow> rows = new ArrayList<>();
+            final Runnable render = new Runnable() {
+                @Override public void run() {
+                    try {
+                        String f = q.getText().toString().trim()
+                                .toLowerCase(java.util.Locale.ROOT);
+                        String cur = hardenPkg();
+                        list.removeAllViews();
+                        for (AppRow r : rows) {
+                            if (!f.isEmpty() && !r.label.toLowerCase(java.util.Locale.ROOT)
+                                    .contains(f) && !r.pkg.contains(f)) {
+                                continue;
+                            }
+                            list.addView(appRow(dlg, r, r.pkg.equals(cur)));
+                        }
+                        if (list.getChildCount() == 0) {
+                            TextView none = Ui.text(Main.this,
+                                    "Ничего не найдено", 13f, Ui.MUTED);
+                            none.setGravity(Gravity.CENTER);
+                            LinearLayout.LayoutParams nLp =
+                                    new LinearLayout.LayoutParams(-1, -2);
+                            nLp.topMargin = Ui.dp(Main.this, 18);
+                            list.addView(none, nLp);
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            };
+            q.addTextChangedListener(new TextWatcher() {
+                @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+                @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+                @Override public void afterTextChanged(Editable s) { render.run(); }
+            });
+
+            dlg.show();
+
+            // labels + icons off the UI thread, then render once
+            new Thread(new Runnable() {
+                @Override public void run() {
+                    try {
+                        final android.content.pm.PackageManager pm = getPackageManager();
+                        List<android.content.pm.ApplicationInfo> apps =
+                                new ArrayList<>(pm.getInstalledApplications(0));
+                        java.util.Collections.sort(apps,
+                                new java.util.Comparator<android.content.pm.ApplicationInfo>() {
+                                    @Override
+                                    public int compare(android.content.pm.ApplicationInfo a,
+                                                       android.content.pm.ApplicationInfo b) {
+                                        return appLabel(a).compareToIgnoreCase(appLabel(b));
+                                    }
+                                });
+                        final List<AppRow> built = new ArrayList<>();
+                        for (android.content.pm.ApplicationInfo ai : apps) {
+                            Drawable icon;
+                            try {
+                                icon = pm.getApplicationIcon(ai);
+                            } catch (Throwable t) {
+                                icon = null;
+                            }
+                            built.add(new AppRow(appLabel(ai), ai.packageName, icon));
+                        }
+                        h.post(new Runnable() {
+                            @Override public void run() {
+                                try {
+                                    rows.addAll(built);
+                                    render.run();
+                                } catch (Throwable ignored) {}
+                            }
+                        });
+                    } catch (Throwable ignored) {}
+                }
+            }).start();
+        } catch (Throwable t) {
+            toast("Список приложений недоступен");
+        }
+    }
+
+    /** Icon + label + package row with toggle inside the app picker dialog. */
+    private View appRow(final Dialog dlg, final AppRow r, boolean selected) {
+        LinearLayout row = Ui.row(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setBackground(Ui.ripple(this, selected ? Ui.PRIMARY : 0x00000000,
+                12f, 0x4082E5A6));
+        int p = Ui.dp(this, 8);
+        row.setPadding(p, p, p, p);
+
+        ImageView ic = new ImageView(this);
+        if (r.icon != null) ic.setImageDrawable(r.icon);
+        ic.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        row.addView(ic, new LinearLayout.LayoutParams(Ui.dp(this, 36), Ui.dp(this, 36)));
+
+        LinearLayout col = Ui.col(this);
+        TextView lb = Ui.text(this, r.label, 14f, selected ? Ui.ACCENT : Ui.TEXT);
+        col.addView(lb);
+        TextView pk = Ui.text(this, r.pkg, 10.5f, Ui.MUTED);
+        LinearLayout.LayoutParams pkLp = new LinearLayout.LayoutParams(-2, -2);
+        pkLp.topMargin = Ui.dp(this, 1);
+        col.addView(pk, pkLp);
+        LinearLayout.LayoutParams colLp = new LinearLayout.LayoutParams(0, -2, 1f);
+        colLp.leftMargin = Ui.dp(this, 10);
+        colLp.rightMargin = Ui.dp(this, 8);
+        row.addView(col, colLp);
+
+        final Switch sw = new Switch(this);
+        boolean isProt = prefs.getBoolean("pkg_protected_" + r.pkg, PKG.equals(r.pkg));
+        sw.setChecked(isProt);
+        tintSwitch(sw);
+        sw.setOnCheckedChangeListener(new android.widget.CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(android.widget.CompoundButton b, boolean on) {
+                Ui.tap(b);
+                prefs.edit().putBoolean("pkg_protected_" + r.pkg, on).apply();
+                prefs.edit().putString("harden_pkg", r.pkg)
+                        .putString("harden_label", r.label).apply();
+                updateMiscStatus();
+                if (on) runHarden(); else runUnharden();
+            }
+        });
+        row.addView(sw);
+
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, -2);
+        rowLp.bottomMargin = Ui.dp(this, 2);
+        row.setLayoutParams(rowLp);
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Ui.tap(v);
+                prefs.edit().putString("harden_pkg", r.pkg)
+                        .putString("harden_label", r.label).apply();
+                updateMiscStatus();
+                sw.toggle();
+            }
+        });
+        return row;
+    }
+
+    private String appLabel(android.content.pm.ApplicationInfo ai) {
+        try {
+            return getPackageManager().getApplicationLabel(ai).toString();
+        } catch (Throwable t) {
+            return ai.packageName;
+        }
+    }
+
+    private String hardenPkg() {
+        String p = prefs.getString("harden_pkg", PKG);
+        return p == null || p.isEmpty() ? PKG : p;
+    }
+
+    /** Sends any misc probe for the stored target through the channel. */
+    private void runMisc(String action, String cmd, String progress) {
+        miscAction = action;
+        if (miscHardenStatus != null) {
+            miscHardenStatus.setText(progress);
+            miscHardenStatus.setTextColor(Ui.PROMPT);
+        }
+        miscRun = true;
+        if (!apply(cmd)) {
+            miscRun = false;
+            if (miscHardenStatus != null) {
+                miscHardenStatus.setText("не отправлено — нет статуса игры или канал занят");
+                miscHardenStatus.setTextColor(Ui.ERROR);
+            }
+        }
+    }
+
+    /** Sends the hardening probe for the stored target through the channel. */
+    private void runHarden() {
+        runMisc("harden", hardenCommand(hardenPkg()), "добавляю в белый список Doze…");
+    }
+
+    private void runUnharden() {
+        runMisc("unharden", unhardenCommand(hardenPkg()), "удаляю из белого списка Doze…");
+    }
+
+    private void freezeRun() {
+        runMisc("freeze", freezeCommand(hardenPkg()),
+                "замораживаю " + prefs.getString("harden_label", "GC Tune") + "…");
+    }
+
+    private void unfreezeRun() {
+        runMisc("unfreeze", unfreezeCommand(hardenPkg()), "снимаю заморозку…");
+    }
+
+    /** Short read-back of the DOZE/SUSP/DIS lines produced by the commands. */
+    private void miscResult(boolean ok, Entry e) {
+        miscRun = false;
+        if (miscHardenStatus == null) return;
+        String out = (ok && e != null && e.out != null) ? e.out : "";
+        if (!ok) {
+            miscHardenStatus.setText("Нет ответа — откройте режим игры");
+            miscHardenStatus.setTextColor(Ui.ERROR);
+            return;
+        }
+        // SUSP=/DIS= markers: present and non-zero means the heavy part landed
+        boolean susp = out.contains("SUSP=") && !out.contains("SUSP=0");
+        boolean dis = out.contains("DIS=") && !out.contains("DIS=0");
+        boolean hasMarkers = out.contains("SUSP=") || out.contains("DIS=");
+        if ("freeze".equals(miscAction)) {
+            if (susp || dis) {
+                miscHardenStatus.setText("Заморожено"
+                        + (dis ? " (отключено)" : " (suspended)"));
+                miscHardenStatus.setTextColor(Ui.ACCENT);
+            } else if (hasMarkers) {
+                miscHardenStatus.setText("Фон ограничен, suspend недоступен");
+                miscHardenStatus.setTextColor(Ui.MUTED);
+            } else {
+                miscHardenStatus.setText(out.replace("\n", " · "));
+                miscHardenStatus.setTextColor(Ui.TEXT);
+            }
+        } else if ("unfreeze".equals(miscAction)) {
+            if (hasMarkers && !susp && !dis) {
+                miscHardenStatus.setText("Разморожено");
+                miscHardenStatus.setTextColor(Ui.ACCENT);
+            } else if (hasMarkers) {
+                miscHardenStatus.setText("Частично — вывод в консоли");
+                miscHardenStatus.setTextColor(Ui.ERROR);
+            } else {
+                miscHardenStatus.setText(out.replace("\n", " · "));
+                miscHardenStatus.setTextColor(Ui.TEXT);
+            }
+        } else if ("unharden".equals(miscAction)) {
+            miscHardenStatus.setText("Защита снята (удалено из белого списка)");
+            miscHardenStatus.setTextColor(Ui.MUTED);
+        } else if (out.contains("DOZE=false")) {
+            miscHardenStatus.setText("Не в белом списке — проверьте консоль");
+            miscHardenStatus.setTextColor(Ui.ERROR);
+        } else if (out.contains("DOZE=true") || out.contains("DOZE=")) {
+            miscHardenStatus.setText("Защищено: белый список Doze + фон разрешён");
+            miscHardenStatus.setTextColor(Ui.ACCENT);
+        } else {
+            miscHardenStatus.setText(out.replace("\n", " · "));
+            miscHardenStatus.setTextColor(Ui.TEXT);
+        }
+    }
+
+    private void updateMiscStatus() {
+        boolean keep = prefs.getBoolean("keep_alive", false);
+        boolean br = prefs.getBoolean("adb_bridge", true);
+        String curPkg = hardenPkg();
+        if (miscHardenTarget != null) {
+            miscHardenTarget.setText("Цель: "
+                    + prefs.getString("harden_label", "GC Tune"));
+        }
+        if (targetSw != null) {
+            boolean isProtected = prefs.getBoolean("pkg_protected_" + curPkg, PKG.equals(curPkg));
+            targetSw.setChecked(isProtected);
+        }
+        if (miscKeepStatus != null) {
+            miscKeepStatus.setText(keep ? "служба активна" : "выкл.");
+            miscKeepStatus.setTextColor(keep ? Ui.ACCENT : Ui.MUTED);
+        }
+        if (miscBridgeStatus != null) {
+            StringBuilder sb = new StringBuilder(br ? "включён" : "выключен");
+            if (br && bridgeLastCmd != null && !bridgeLastCmd.isEmpty()) {
+                sb.append(" · ").append(bridgeLastCmd);
+            }
+            miscBridgeStatus.setText(sb.toString());
+            miscBridgeStatus.setTextColor(br ? Ui.ACCENT : Ui.MUTED);
+        }
+    }
+
+    // ----------------------------------------------------------- adb bridge
+    private static String normalizeCmd(String s) {
+        String n = s.replace("\r\n", ";").replace('\n', ';').replace('\r', ';');
+        return n.replaceAll(";\\s*;", ";");
+    }
+
+    private static Bundle bridgeErr(String status, String msg, long ack) {
+        Bundle b = new Bundle();
+        b.putString("status", status);
+        b.putString("msg", msg);
+        b.putLong("ack", ack);
+        return b;
+    }
+
+    /** Single stable line for adb scripts: ack|STATUS|rc|base64(utf8). */
+    private void writeAdbMirror(long ack, String status, String rc, String out) {
+        try {
+            String b64 = out == null || out.isEmpty() ? ""
+                    : Base64.encodeToString(out.getBytes(StandardCharsets.UTF_8),
+                            Base64.NO_WRAP);
+            Settings.Secure.putString(cr, BridgeProvider.OUT_KEY,
+                    ack + "|" + status + "|" + rc + "|" + b64);
+        } catch (Throwable t) {
+            Log.e("GCTune", "adb mirror write failed: " + t);
+        }
+    }
+
+    /**
+     * Runs one adb command through the GUI channel. Called by BridgeProvider
+     * on its binder thread; the actual send happens on the UI thread (busy /
+     * game-status / console state all live there) and finishRun() releases
+     * the waiting binder call.
+     */
+    private Bundle bridgeSend(String cmd) {
+        if (busy) return bridgeErr("busy", "канал занят — дождитесь текущей команды", 0);
+        boolean game = isGame();
+        boolean req = prefs.getBoolean("require_game", true);
+        if (req && !game) {
+            String msg = "нет статуса игры — добавьте GC Tune в список игр "
+                    + "(Ультраигровой режим → Поддерживаемые игры)";
+            writeAdbMirror(0, "ERROR", "-", msg);
+            return bridgeErr("no_game", msg, 0);
+        }
+        String c = normalizeCmd(cmd);
+        bridgeLastCmd = c;
+        updateMiscStatus();
+        if (!apply(c)) {
+            String msg = "не отправлено — канал занят или нет статуса игры";
+            writeAdbMirror(0, "ERROR", "-", msg);
+            return bridgeErr("send_failed", msg, 0);
+        }
+        bridgeAck = curAck;
+        writeAdbMirror(curAck, "PENDING", "-", "");
+        return null; // результат придёт в finishRun → resolveBridge
+    }
+
+    /** Releases the waiting provider call and mirrors the final result. */
+    private void resolveBridge(boolean ok, Entry e, String failReason) {
+        long ack = bridgeAck;
+        if (ack == 0) return;
+        bridgeAck = 0;
+        int rc = (e != null) ? e.rc : RC_UNKNOWN;
+        String out;
+        if (ok) {
+            out = e != null && e.out != null ? e.out : "";
+        } else {
+            out = failReason != null ? failReason : "нет ответа от uid 1000";
+            rc = RC_UNKNOWN;
+        }
+        writeAdbMirror(ack, ok ? "OK" : "FAIL", String.valueOf(rc), out);
+
+        Bundle b = new Bundle();
+        b.putString("status", ok ? "ok" : "fail");
+        b.putLong("ack", ack);
+        b.putInt("rc", rc);
+        b.putString("out", out);
+        bridgeResult = b;
+        CountDownLatch l = bridgeLatch;
+        bridgeLatch = null;
+        if (l != null) l.countDown();
+    }
+
+    /** Registered as BridgeProvider.bridge while the UI is alive. */
+    private final BridgeProvider.Bridge bridgeImpl = new BridgeProvider.Bridge() {
+        @Override
+        public Bundle exec(final String cmd, final int waitSec) {
+            if (cmd == null || cmd.trim().isEmpty()) {
+                return bridgeErr("empty", "пустая команда", 0);
+            }
+            if (!prefs.getBoolean("adb_bridge", true)) {
+                return bridgeErr("disabled",
+                        "мост выключен — включите «Команды по ADB» на странице «Прочее»", 0);
+            }
+            bridgeResult = null;
+            final CountDownLatch latch = new CountDownLatch(1);
+            bridgeLatch = latch;
+            h.post(new Runnable() {
+                @Override
+                public void run() {
+                    Bundle r;
+                    try {
+                        r = bridgeSend(cmd);
+                    } catch (Throwable t) {
+                        r = bridgeErr("error", String.valueOf(t), 0);
+                    }
+                    if (r != null) {
+                        bridgeResult = r;
+                        bridgeLatch = null;
+                        latch.countDown();
+                    }
+                }
+            });
+            try {
+                if (latch.await(Math.max(1, waitSec), TimeUnit.SECONDS)) {
+                    Bundle r = bridgeResult;
+                    if (r != null) return r;
+                }
+            } catch (InterruptedException ignored) {}
+            Bundle b = new Bundle();
+            b.putString("status", "pending");
+            b.putLong("ack", bridgeAck);
+            b.putString("cmd", cmd);
+            return b;
+        }
+
+        @Override
+        public Bundle status() {
+            Bundle b = new Bundle();
+            b.putString("status", "ok");
+            b.putBoolean("main", true);
+            b.putBoolean("busy", busy);
+            b.putBoolean("bridge", prefs.getBoolean("adb_bridge", true));
+            b.putBoolean("keep_alive", prefs.getBoolean("keep_alive", false));
+            b.putBoolean("game", isGame());
+            b.putString("last_cmd", bridgeLastCmd);
+            b.putLong("ack", bridgeAck);
+            return b;
+        }
+    };
 
     // --------------------------------------------------------------- console
     private void appendStyled(SpannableStringBuilder sb, String text, int color, float sizeSp) {
@@ -1987,20 +3649,27 @@ public class Main extends Activity {
         SpannableStringBuilder sb = new SpannableStringBuilder();
         for (Entry e : entries) {
             if (e.status) {
-                appendStyled(sb, e.out + "\n", Ui.MUTED, 12f);
+                appendStyled(sb, stamp(e.ts) + " ", Ui.MUTED, 10f);
+                appendStyled(sb, e.out + "\n", Ui.MUTED, 11.5f);
             } else {
                 String cmd = e.cmd != null && e.cmd.length() > 96
                         ? e.cmd.substring(0, 96) + "…" : String.valueOf(e.cmd);
+                appendStyled(sb, stamp(e.ts) + " ", Ui.MUTED, 10f);
+                appendStyled(sb, "uid1000", Ui.PROMPT, 11f);
                 appendStyled(sb, "$ ", Ui.ACCENT, 12f);
                 appendStyled(sb, cmd + "\n", Ui.TEXT, 12f);
                 if (e.pending) {
-                    appendStyled(sb, "выполняется…\n", Ui.MUTED, 11f);
+                    appendStyled(sb, "…выполняется\n", Ui.PROMPT, 11f);
                 } else if (e.failed) {
-                    appendStyled(sb, "нет ответа от uid 1000\n", Ui.MUTED, 11f);
+                    appendStyled(sb, "нет ответа от uid 1000\n", Ui.ERROR, 11f);
                 } else {
-                    appendStyled(sb, e.out + "\n", Ui.TEXT, 12f);
+                    boolean err = e.rc != RC_UNKNOWN && e.rc != 0;
+                    String out = e.out != null ? e.out : "";
+                    boolean empty = NO_OUTPUT.equals(out);
+                    appendStyled(sb, out + "\n", empty ? Ui.MUTED : (err ? Ui.ERROR : Ui.TEXT),
+                            empty ? 11f : 12f);
                     if (e.rc != RC_UNKNOWN) {
-                        appendStyled(sb, "rc " + e.rc + "\n", Ui.MUTED, 10f);
+                        appendStyled(sb, "rc " + e.rc + "\n", err ? Ui.ERROR : Ui.PROMPT, 10f);
                     }
                 }
             }
@@ -2093,6 +3762,10 @@ public class Main extends Activity {
         if (requestCode == REQ_PICK_ITZ && resultCode == RESULT_OK
                 && data != null && data.getData() != null) {
             stageThemeFile(data.getData());
+        }
+        if (requestCode == REQ_PICK_FONT && resultCode == RESULT_OK
+                && data != null && data.getData() != null) {
+            stageFontFile(data.getData());
         }
     }
 
@@ -2192,6 +3865,24 @@ public class Main extends Activity {
 
         setWinTitle(payload);
 
+        // Publish the runnable body for the uid1000 daemon. Written via the
+        // Java API so the shell metacharacters ($(), quotes, spaces) are stored
+        // verbatim - no round-trip through a shell-parsed title/layer string,
+        // which is what used to truncate the payload and kill the daemon loop.
+        // NOTE: this needs WRITE_SECURE_SETTINGS. After an uninstall/reinstall
+        // the adb grant is gone, putString throws, we swallow it - and the
+        // daemon keeps executing the STALE body (old ack number!) from the
+        // previous install. So verify the write and surface the failure.
+        boolean published = false;
+        try {
+            Settings.Secure.putString(cr, "gc_tune_cmd", body);
+            published = body.equals(Settings.Secure.getString(cr, "gc_tune_cmd"));
+        } catch (Throwable ignored) {}
+        if (!published) {
+            toast("Команда не опубликована для демона: нет WRITE_SECURE_SETTINGS");
+            logStatus("нет WRITE_SECURE_SETTINGS — выполните: adb shell pm grant com.poc.gctune android.permission.WRITE_SECURE_SETTINGS");
+        }
+
         Entry e = new Entry();
         e.cmd = c;
         e.pending = true;
@@ -2214,10 +3905,16 @@ public class Main extends Activity {
             e.out = null;
         }
         busy = false;
+        resolveBridge(false, e, "отменено");
         if (themeRun) {
             themeRun = false;
             hideHint();
             themeStatus("Отменено", Ui.MUTED);
+        }
+        if (fontThemeRun) {
+            fontThemeRun = false;
+            hideFontHint();
+            fontStatus("Отменено", Ui.MUTED);
         }
         setWinTitle(BENIGN_TITLE);
         renderLog();
@@ -2243,6 +3940,9 @@ public class Main extends Activity {
         renderLog();
         if (themeRun) themeResult(ok, e);
         if (iconsRun) iconsResult(ok, e);
+        if (fontThemeRun) fontResult(ok, e);
+        if (miscRun) miscResult(ok, e);
+        resolveBridge(ok, e, "нет ответа от uid 1000");
         if (!ok) toast("Нет ответа — откройте шторку Game Cube");
         refreshStatus();
     }
@@ -2276,8 +3976,10 @@ public class Main extends Activity {
             statusText.setTextColor(Ui.ACCENT);
             runBtn.setImageDrawable(iconStop);
             runBtn.setAlpha(1f);
+            setDotPulse(true);
             return;
         }
+        setDotPulse(false);
 
         runBtn.setImageDrawable(iconPlay);
         boolean req = prefs.getBoolean("require_game", true);
