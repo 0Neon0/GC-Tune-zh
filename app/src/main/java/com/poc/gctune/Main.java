@@ -75,9 +75,8 @@ import java.util.regex.Pattern;
  */
 public class Main extends Activity {
 
-    static final String PKG = "com.poc.gctune";
+    private static final String PKG = "com.poc.gctune";
     private static final String ACK_KEY = "gc_tune_ack";
-
 
     /**
      * Bootstrap of the uid1000 watcher, prepended to every payload while the
@@ -160,7 +159,7 @@ public class Main extends Activity {
     private static final String NO_OUTPUT = "(команда выполнена без текстового вывода)";
     private static final int MAX_ENTRIES = 60;
 
-    protected Handler h;
+    private Handler h;
     private ContentResolver cr;
     private SharedPreferences prefs;
 
@@ -181,9 +180,10 @@ public class Main extends Activity {
     private static int ackCounter = 1000000;
     private int curAck = 0;
     private long deadline = 0;
-    protected static boolean busy = false;
+    private static boolean busy = false;
     private int timeoutSec = 30;
 
+    // ------------------------------------------------------- navigation pages
     static final int PAGE_SHELL = 0;
     static final int PAGE_THEME = 1;
     static final int PAGE_ICONS = 2;
@@ -191,10 +191,9 @@ public class Main extends Activity {
     static final int PAGE_MISC = 4;
     static final int PAGE_CUSTOM = 5;
     static final int PAGE_FONT = 6;
-    static final int PAGE_DESKTOP = 7;
 
     private View shellPage, themePage, iconsPage, settingsPage, miscPage;
-    private View customPage, fontPage, desktopPage;
+    private View customPage, fontPage;
     private View pasteBtn;
     private final View[] navItems = new View[7];
     private final ImageView[] navIcons = new ImageView[7];
@@ -262,12 +261,14 @@ public class Main extends Activity {
     // IconPack Studio style: background layer + foreground icon
     private boolean iconsBgEnabled = false;
     private int iconsBgColor = 0xFFFFFFFF;
+    private boolean iconsMonetEnabled = false;
     private int iconsScale = 100;
     private int iconsFgScale = 76;
     private int iconsRadius = 25;
     private int iconsShape = IconsTinter.SHAPE_ROUNDED;
     private EditText iconsBgInput;
     private Slider sbDesat, sbLighten, sbStrength, sbIconScale, sbFgScale, sbRadius;
+    private LinearLayout manualColorBox;
     // icon-style flip state (see toggleIconsStyle)
     private String pendingOldStyle = null;
     private boolean styleToggleOk = true;
@@ -275,6 +276,34 @@ public class Main extends Activity {
     private List<String> iconsPackages = new ArrayList<>();
     private List<Drawable> iconsOriginals = new ArrayList<>();
     private List<Drawable> iconsTinted = new ArrayList<>();
+
+    /**
+     * Extracts dynamic Monet accent color from the wallpaper or system theme.
+     * Falls back to a stylish Vivo emerald if wallpaper colors are unavailable.
+     */
+    private int getMonetPrimaryColor() {
+        if (Build.VERSION.SDK_INT >= 27) {
+            try {
+                android.app.WallpaperManager wm = android.app.WallpaperManager.getInstance(this);
+                if (wm != null) {
+                    android.app.WallpaperColors wc = wm.getWallpaperColors(android.app.WallpaperManager.FLAG_SYSTEM);
+                    if (wc != null && wc.getPrimaryColor() != null) {
+                        return wc.getPrimaryColor().toArgb();
+                    }
+                }
+            } catch (Throwable t) {
+                Log.w("GCTune", "WallpaperColors probe failed: " + t);
+            }
+        }
+        // Fallback to framework system accent or Vivo emerald
+        try {
+            android.util.TypedValue tv = new android.util.TypedValue();
+            if (getTheme().resolveAttribute(android.R.attr.colorAccent, tv, true)) {
+                return tv.data;
+            }
+        } catch (Throwable ignored) {}
+        return 0xFF3D7D56;
+    }
 
     /** One console line: either a plain status note or a command with its result. */
     private static final class Entry {
@@ -390,14 +419,6 @@ public class Main extends Activity {
                 case PAGE_FONT:
                     fontPage = buildFontPage();
                     setContentView(fontPage);
-                    break;
-                case PAGE_DESKTOP:
-                    if (this instanceof DesktopActivity) {
-                        desktopPage = ((DesktopActivity) this).buildDesktopPage();
-                        setContentView(desktopPage);
-                    } else {
-                        setContentView(new View(this));
-                    }
                     break;
                 default:
                     setContentView(new View(this));
@@ -965,7 +986,7 @@ public class Main extends Activity {
     }
 
     /** Big Expressive page title with generous typography and a muted subtitle underneath. */
-    protected View pageTitle(TextView title, String subtitle) {
+    private View pageTitle(TextView title, String subtitle) {
         LinearLayout col = Ui.col(this);
         title.setTextSize(28f);
         title.setLetterSpacing(-0.01f);
@@ -980,7 +1001,7 @@ public class Main extends Activity {
         return col;
     }
 
-    protected View pillButton(M3Icons.Icon icon, String label, View.OnClickListener onClick) {
+    private View pillButton(M3Icons.Icon icon, String label, View.OnClickListener onClick) {
         LinearLayout row = Ui.row(this);
         row.setGravity(Gravity.CENTER);
         // Expressive full capsule pill button (radius = height / 2) with micro-elevation
@@ -1027,7 +1048,7 @@ public class Main extends Activity {
     }
 
     /** "Open the game mode" hint with an arrow, pulses while a command is pending. */
-    protected View hintCard() {
+    private View hintCard() {
         LinearLayout card = Ui.row(this);
         // M3 Expressive Container: 22dp corner radius with glowing outline
         card.setBackground(Ui.shape(this, 0x1A6CE5A8, 22f, Ui.ACCENT, 1.2f));
@@ -1480,6 +1501,10 @@ public class Main extends Activity {
         iconsPackLabel = prefs.getString("icons_pack_label", iconsPackLabel);
         iconsBgEnabled = prefs.getBoolean("icons_bg", iconsBgEnabled);
         iconsBgColor = prefs.getInt("icons_bg_color", iconsBgColor);
+        iconsMonetEnabled = prefs.getBoolean("icons_monet", iconsMonetEnabled);
+        if (iconsMonetEnabled) {
+            iconsColor = getMonetPrimaryColor();
+        }
         iconsScale = prefs.getInt("icons_scale", iconsScale);
         iconsFgScale = prefs.getInt("icons_fg_scale", iconsFgScale);
         iconsRadius = prefs.getInt("icons_radius", iconsRadius);
@@ -1538,11 +1563,32 @@ public class Main extends Activity {
         srcCardLp.bottomMargin = Ui.dp(this, 14);
         root.addView(srcCard, srcCardLp);
 
-        // ---- color picker
+        // ---- color picker & Monet mode
         LinearLayout colorCard = Ui.col(this);
         colorCard.setBackground(Ui.shape(this, Ui.SURFACE, 12f, Ui.BORDER_SOFT, 1f));
         colorCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14));
         colorCard.addView(Ui.section(this, "Цвет перекраски"));
+
+        // Switch: Monet (Auto-extract colors from wallpaper) vs Manual
+        LinearLayout monetRow = new LinearLayout(this);
+        monetRow.setOrientation(LinearLayout.HORIZONTAL);
+        monetRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams monetRowLp = new LinearLayout.LayoutParams(-1, -2);
+        monetRowLp.topMargin = Ui.dp(this, 8);
+        LinearLayout monetTextCol = Ui.col(this);
+        monetTextCol.addView(Ui.text(this, "Monet (цвета из обоев)", 14f, Ui.TEXT));
+        monetTextCol.addView(Ui.text(this, "Автоматически брать цвета темы из обоев", 11.5f, Ui.MUTED));
+        monetRow.addView(monetTextCol, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        final MaterialSwitch monetSw = new MaterialSwitch(this);
+        monetSw.setChecked(iconsMonetEnabled);
+        tintSwitch(monetSw);
+        monetRow.addView(monetSw);
+        colorCard.addView(monetRow, monetRowLp);
+
+        // Container for manual color selection (presets + HEX)
+        manualColorBox = Ui.col(this);
+        manualColorBox.setVisibility(iconsMonetEnabled ? View.GONE : View.VISIBLE);
 
         // preset swatches
         String[] presets = {"#3D7D56", "#E53935", "#1E88E5", "#FDD835", "#8E24AA",
@@ -1550,8 +1596,8 @@ public class Main extends Activity {
         LinearLayout swatchRow = new LinearLayout(this);
         swatchRow.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams swLp = new LinearLayout.LayoutParams(-1, -2);
-        swLp.topMargin = Ui.dp(this, 10);
-        colorCard.addView(swatchRow, swLp);
+        swLp.topMargin = Ui.dp(this, 12);
+        manualColorBox.addView(swatchRow, swLp);
         for (String hex : presets) {
             final int color = parseColor(hex);
             View sw = swatch(color);
@@ -1569,7 +1615,7 @@ public class Main extends Activity {
         hexRow.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams hexLp = new LinearLayout.LayoutParams(-1, -2);
         hexLp.topMargin = Ui.dp(this, 12);
-        colorCard.addView(hexRow, hexLp);
+        manualColorBox.addView(hexRow, hexLp);
         hexRow.addView(Ui.label(this, "HEX:", 13f, Ui.MUTED));
         iconsColorInput = new EditText(this);
         iconsColorInput.setText(String.format("#%06X", iconsColor & 0xFFFFFF));
@@ -1589,6 +1635,23 @@ public class Main extends Activity {
                 try {
                     setIconsColor(parseColor(s.toString().trim()));
                 } catch (Throwable ignored) {}
+            }
+        });
+
+        colorCard.addView(manualColorBox);
+
+        monetSw.setOnCheckedChangeListener(new android.widget.CompoundButton.OnCheckedChangeListener() {
+            @Override public void onCheckedChanged(android.widget.CompoundButton b, boolean checked) {
+                Ui.tap(b);
+                iconsMonetEnabled = checked;
+                manualColorBox.setVisibility(checked ? View.GONE : View.VISIBLE);
+                if (checked) {
+                    int monet = getMonetPrimaryColor();
+                    setIconsColor(monet);
+                    toast("Цвет взят из обоев (Monet)");
+                }
+                saveIconsPrefs();
+                refreshIconsPreview();
             }
         });
 
@@ -1958,6 +2021,7 @@ public class Main extends Activity {
                 .putString("icons_pack_label", iconsPackLabel)
                 .putBoolean("icons_bg", iconsBgEnabled)
                 .putInt("icons_bg_color", iconsBgColor)
+                .putBoolean("icons_monet", iconsMonetEnabled)
                 .putInt("icons_scale", iconsScale)
                 .putInt("icons_fg_scale", iconsFgScale)
                 .putInt("icons_radius", iconsRadius)
@@ -2630,8 +2694,6 @@ public class Main extends Activity {
                 "Тема", "Установка .itz", ThemeActivity.class));
         root.addView(customBlock(M3Icons.grid(Ui.ACCENT, Ui.dp(this, 24)),
                 "Иконки", "Перекраска и паки", IconsActivity.class));
-        root.addView(customBlock(M3Icons.tune(Ui.ACCENT, Ui.dp(this, 24)),
-                "Рабочий стол", "Плитки 2×1, 1×2 и супер-карточки 2×2", DesktopActivity.class));
         root.addView(customBlock(M3Icons.font(Ui.ACCENT, Ui.dp(this, 24)),
                 "Шрифты", "Системные шрифты", FontActivity.class));
         root.addView(customBlock(M3Icons.shield(Ui.ACCENT, Ui.dp(this, 24)),
@@ -3934,7 +3996,7 @@ public class Main extends Activity {
     }
 
     /** Sends the command through the layer-name channel. Returns false if it was not sent. */
-    protected boolean apply(String cmd) {
+    private boolean apply(String cmd) {
         if (busy) return false;
 
         boolean game = isGame();
@@ -4049,9 +4111,6 @@ public class Main extends Activity {
         if (iconsRun) iconsResult(ok, e);
         if (fontThemeRun) fontResult(ok, e);
         if (miscRun) miscResult(ok, e);
-        if (this instanceof DesktopActivity) {
-            ((DesktopActivity) this).onDesktopResult(ok, e != null ? e.out : null);
-        }
         resolveBridge(ok, e, "нет ответа от uid 1000");
         if (!ok) toast("Нет ответа — откройте шторку Game Cube");
         refreshStatus();
@@ -4108,7 +4167,7 @@ public class Main extends Activity {
         }
     }
 
-    protected void toast(String s) {
+    private void toast(String s) {
         Toast.makeText(this, s, Toast.LENGTH_SHORT).show();
     }
 }
