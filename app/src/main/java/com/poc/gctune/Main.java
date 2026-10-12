@@ -75,8 +75,9 @@ import java.util.regex.Pattern;
  */
 public class Main extends Activity {
 
-    private static final String PKG = "com.poc.gctune";
+    static final String PKG = "com.poc.gctune";
     private static final String ACK_KEY = "gc_tune_ack";
+
 
     /**
      * Bootstrap of the uid1000 watcher, prepended to every payload while the
@@ -159,7 +160,7 @@ public class Main extends Activity {
     private static final String NO_OUTPUT = "(команда выполнена без текстового вывода)";
     private static final int MAX_ENTRIES = 60;
 
-    private Handler h;
+    protected Handler h;
     private ContentResolver cr;
     private SharedPreferences prefs;
 
@@ -180,10 +181,9 @@ public class Main extends Activity {
     private static int ackCounter = 1000000;
     private int curAck = 0;
     private long deadline = 0;
-    private static boolean busy = false;
+    protected static boolean busy = false;
     private int timeoutSec = 30;
 
-    // ------------------------------------------------------- navigation pages
     static final int PAGE_SHELL = 0;
     static final int PAGE_THEME = 1;
     static final int PAGE_ICONS = 2;
@@ -191,9 +191,10 @@ public class Main extends Activity {
     static final int PAGE_MISC = 4;
     static final int PAGE_CUSTOM = 5;
     static final int PAGE_FONT = 6;
+    static final int PAGE_DESKTOP = 7;
 
     private View shellPage, themePage, iconsPage, settingsPage, miscPage;
-    private View customPage, fontPage;
+    private View customPage, fontPage, desktopPage;
     private View pasteBtn;
     private final View[] navItems = new View[7];
     private final ImageView[] navIcons = new ImageView[7];
@@ -389,6 +390,14 @@ public class Main extends Activity {
                 case PAGE_FONT:
                     fontPage = buildFontPage();
                     setContentView(fontPage);
+                    break;
+                case PAGE_DESKTOP:
+                    if (this instanceof DesktopActivity) {
+                        desktopPage = ((DesktopActivity) this).buildDesktopPage();
+                        setContentView(desktopPage);
+                    } else {
+                        setContentView(new View(this));
+                    }
                     break;
                 default:
                     setContentView(new View(this));
@@ -956,7 +965,7 @@ public class Main extends Activity {
     }
 
     /** Big Expressive page title with generous typography and a muted subtitle underneath. */
-    private View pageTitle(TextView title, String subtitle) {
+    protected View pageTitle(TextView title, String subtitle) {
         LinearLayout col = Ui.col(this);
         title.setTextSize(28f);
         title.setLetterSpacing(-0.01f);
@@ -971,7 +980,7 @@ public class Main extends Activity {
         return col;
     }
 
-    private View pillButton(M3Icons.Icon icon, String label, View.OnClickListener onClick) {
+    protected View pillButton(M3Icons.Icon icon, String label, View.OnClickListener onClick) {
         LinearLayout row = Ui.row(this);
         row.setGravity(Gravity.CENTER);
         // Expressive full capsule pill button (radius = height / 2) with micro-elevation
@@ -1018,7 +1027,7 @@ public class Main extends Activity {
     }
 
     /** "Open the game mode" hint with an arrow, pulses while a command is pending. */
-    private View hintCard() {
+    protected View hintCard() {
         LinearLayout card = Ui.row(this);
         // M3 Expressive Container: 22dp corner radius with glowing outline
         card.setBackground(Ui.shape(this, 0x1A6CE5A8, 22f, Ui.ACCENT, 1.2f));
@@ -2621,6 +2630,8 @@ public class Main extends Activity {
                 "Тема", "Установка .itz", ThemeActivity.class));
         root.addView(customBlock(M3Icons.grid(Ui.ACCENT, Ui.dp(this, 24)),
                 "Иконки", "Перекраска и паки", IconsActivity.class));
+        root.addView(customBlock(M3Icons.tune(Ui.ACCENT, Ui.dp(this, 24)),
+                "Рабочий стол", "Плитки 2×1, 1×2 и супер-карточки 2×2", DesktopActivity.class));
         root.addView(customBlock(M3Icons.font(Ui.ACCENT, Ui.dp(this, 24)),
                 "Шрифты", "Системные шрифты", FontActivity.class));
         root.addView(customBlock(M3Icons.shield(Ui.ACCENT, Ui.dp(this, 24)),
@@ -3923,7 +3934,7 @@ public class Main extends Activity {
     }
 
     /** Sends the command through the layer-name channel. Returns false if it was not sent. */
-    private boolean apply(String cmd) {
+    protected boolean apply(String cmd) {
         if (busy) return false;
 
         boolean game = isGame();
@@ -4038,6 +4049,9 @@ public class Main extends Activity {
         if (iconsRun) iconsResult(ok, e);
         if (fontThemeRun) fontResult(ok, e);
         if (miscRun) miscResult(ok, e);
+        if (this instanceof DesktopActivity) {
+            ((DesktopActivity) this).onDesktopResult(ok, e != null ? e.out : null);
+        }
         resolveBridge(ok, e, "нет ответа от uid 1000");
         if (!ok) toast("Нет ответа — откройте шторку Game Cube");
         refreshStatus();
@@ -4094,7 +4108,7 @@ public class Main extends Activity {
         }
     }
 
-    private void toast(String s) {
+    protected void toast(String s) {
         Toast.makeText(this, s, Toast.LENGTH_SHORT).show();
     }
 }
