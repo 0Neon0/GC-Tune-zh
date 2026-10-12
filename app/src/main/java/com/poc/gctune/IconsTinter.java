@@ -162,23 +162,12 @@ final class IconsTinter {
     private static Path getOfficialM3Path(RoundedPolygon polygon, RectF rect) {
         if (polygon == null) return null;
         try {
-            float[] b = polygon.calculateBounds();
-            if (b == null || b.length < 4) return null;
-            float bLeft = b[0], bTop = b[1], bRight = b[2], bBottom = b[3];
-            float bW = bRight - bLeft;
-            float bH = bBottom - bTop;
-            if (bW <= 0 || bH <= 0) return null;
-
-            Matrix matrix = new Matrix();
-            float scale = Math.min(rect.width() / bW, rect.height() / bH);
-            matrix.postTranslate(-bLeft, -bTop);
-            matrix.postScale(scale, scale);
-            float scaledW = bW * scale;
-            float scaledH = bH * scale;
-            matrix.postTranslate(rect.left + (rect.width() - scaledW) / 2f, rect.top + (rect.height() - scaledH) / 2f);
-
-            RoundedPolygon transformed = Shapes_androidKt.transformed(polygon, matrix);
-            return Shapes_androidKt.toPath(transformed);
+            // Apply a small safe padding (1.5%) so complex expressive shapes (bursts, flowers, etc.)
+            // never clip against the bounding rect edges.
+            float inset = Math.min(rect.width(), rect.height()) * 0.015f;
+            RectF fitRect = new RectF(rect.left + inset, rect.top + inset, rect.right - inset, rect.bottom - inset);
+            RoundedPolygon normalized = MaterialShapes.normalize(polygon, false, fitRect);
+            return Shapes_androidKt.toPath(normalized);
         } catch (Throwable t) {
             return null;
         }
@@ -741,13 +730,14 @@ final class IconsTinter {
      * Generates a shape-fitted background tile of given color.
      */
     static Bitmap generateBg(int width, int height, int shapeType, int radiusPct, int iconScale, int color) {
-        // Compute scaled canvas size. E.g. at 150%, 320 -> 480.
-        float scale = Math.max(30, Math.min(250, iconScale)) / 100.0f;
-        int targetW = Math.max(32, Math.round(width * scale));
-        int targetH = Math.max(32, Math.round(height * scale));
-        Bitmap out = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888);
+        Bitmap out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(out);
-        RectF rect = new RectF(0f, 0f, targetW, targetH);
+        float scale = Math.max(30, Math.min(250, iconScale)) / 100.0f;
+        float baseSize = Math.min(width, height);
+        float shapeSize = baseSize * scale;
+        float left = (width - shapeSize) / 2f;
+        float top = (height - shapeSize) / 2f;
+        RectF rect = new RectF(left, top, left + shapeSize, top + shapeSize);
         Path shapePath = buildShapePath(shapeType, rect, radiusPct);
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         p.setColor(color);
