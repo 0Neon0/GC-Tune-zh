@@ -32,10 +32,10 @@
         </activity>
         <activity android:name=".Main" android:exported="true" />
         <activity android:name=".ThemeActivity" android:exported="false" />
+        <activity android:name=".SettingsThemeActivity" android:exported="false" />
         <activity android:name=".IconsActivity" android:exported="false" />
         <activity android:name=".MiscActivity" android:exported="false" />
         <activity android:name=".FontActivity" android:exported="false" />
-        <activity android:name=".DesktopActivity" android:exported="false" />
         <activity android:name=".PrefsActivity" android:exported="false" />
         <!-- owns layer + ACK receiver + wake retries while a command is pending -->
         <service android:name=".ChannelService" android:exported="false" />

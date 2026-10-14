@@ -22,8 +22,8 @@ public class KeepAliveReceiver extends BroadcastReceiver {
 
     private static final String TAG = "GCTune";
     private static final int REQ = 7701;
-    /** AlarmManager allows ~1/9 min per app for setAndAllowWhileIdle. */
-    public static final long INTERVAL = 12 * 60 * 1000L;
+    /** Ping every 3 minutes so the process never falls asleep in Doze. */
+    public static final long INTERVAL = 3 * 60 * 1000L;
 
     private static SharedPreferences prefs(Context c) {
         return c.getSharedPreferences("gctune_m3", Context.MODE_PRIVATE);
@@ -39,10 +39,16 @@ public class KeepAliveReceiver extends BroadcastReceiver {
         try {
             AlarmManager am = c.getSystemService(AlarmManager.class);
             if (am == null) return;
-            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMs, pi(c));
+            // setExactAndAllowWhileIdle wakes the CPU up even in deep Doze mode
+            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMs, pi(c));
             prefs(c).edit().putLong("ka_next", atMs).apply();
         } catch (Throwable t) {
-            Log.e(TAG, "keep-alive schedule failed: " + t);
+            try {
+                AlarmManager am = c.getSystemService(AlarmManager.class);
+                if (am != null) am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMs, pi(c));
+            } catch (Throwable t2) {
+                Log.e(TAG, "keep-alive schedule failed: " + t2);
+            }
         }
     }
 

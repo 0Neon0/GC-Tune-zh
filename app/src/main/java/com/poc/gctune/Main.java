@@ -191,11 +191,12 @@ public class Main extends Activity {
     static final int PAGE_MISC = 4;
     static final int PAGE_CUSTOM = 5;
     static final int PAGE_FONT = 6;
+    static final int PAGE_SETTINGS_THEME = 7;
 
     private View shellPage, themePage, iconsPage, settingsPage, miscPage;
-    private View customPage, fontPage;
+    private View customPage, fontPage, settingsThemePage;
     private View pasteBtn;
-    private final View[] navItems = new View[7];
+    private final View[] navItems = new View[8];
     private final ImageView[] navIcons = new ImageView[7];
     private final TextView[] navLabels = new TextView[7];
     private View navIndicator;
@@ -276,6 +277,19 @@ public class Main extends Activity {
     private List<String> iconsPackages = new ArrayList<>();
     private List<Drawable> iconsOriginals = new ArrayList<>();
     private List<Drawable> iconsTinted = new ArrayList<>();
+
+    // -------------------------------------------------------- settings themer
+    private TextView stStatusText;
+    private View stHint;
+    private ObjectAnimator stHintPulse;
+    private int stColor = 0xFF3D7D56;
+    private boolean stMonet = true;
+    private boolean stRun = false;
+    private EditText stColorInput;
+    private LinearLayout stManualBox;
+    private ImageView stPreviewSwatch;
+    private TextView stPreviewAccentText;
+    private MaterialSwitch stPreviewSwitch;
 
     /**
      * Extracts dynamic Monet accent color from the wallpaper or system theme.
@@ -419,6 +433,10 @@ public class Main extends Activity {
                 case PAGE_FONT:
                     fontPage = buildFontPage();
                     setContentView(fontPage);
+                    break;
+                case PAGE_SETTINGS_THEME:
+                    settingsThemePage = buildSettingsThemePage();
+                    setContentView(settingsThemePage);
                     break;
                 default:
                     setContentView(new View(this));
@@ -1752,14 +1770,8 @@ public class Main extends Activity {
         });
         styleCard.addView(bgRow, bgRowLp);
 
-        sbIconScale = addSlider(styleCard, "Масштаб всей иконки (на экране)", 30, 300, iconsScale, new IntSetter() {
+        sbIconScale = addSlider(styleCard, "Размер иконки", 40, 160, iconsScale, new IntSetter() {
             @Override public void set(int v) { iconsScale = v; }
-        });
-        sbFgScale = addSlider(styleCard, "Масштаб рисунка внутри", 15, 150, iconsFgScale, new IntSetter() {
-            @Override public void set(int v) { iconsFgScale = v; }
-        });
-        sbRadius = addSlider(styleCard, "Скругление углов", 0, 50, iconsRadius, new IntSetter() {
-            @Override public void set(int v) { iconsRadius = v; }
         });
 
         // ---- Shape selector chips (Full control over icon geometry)
@@ -2035,8 +2047,6 @@ public class Main extends Activity {
         if (sbLighten != null) sbLighten.setValue(0f);
         if (sbStrength != null) sbStrength.setValue(100f);
         if (sbIconScale != null) sbIconScale.setValue(100f);
-        if (sbFgScale != null) sbFgScale.setValue(76f);
-        if (sbRadius != null) sbRadius.setValue(25f);
         iconsScale = 100;
         iconsFgScale = 76;
         iconsRadius = 25;
@@ -2692,6 +2702,8 @@ public class Main extends Activity {
 
         root.addView(customBlock(M3Icons.palette(Ui.ACCENT, Ui.dp(this, 24)),
                 "Тема", "Установка .itz", ThemeActivity.class));
+        root.addView(customBlock(M3Icons.tune(Ui.ACCENT, Ui.dp(this, 24)),
+                "Системные Настройки", "Перекраска акцента и Monet", SettingsThemeActivity.class));
         root.addView(customBlock(M3Icons.grid(Ui.ACCENT, Ui.dp(this, 24)),
                 "Иконки", "Перекраска и паки", IconsActivity.class));
         root.addView(customBlock(M3Icons.font(Ui.ACCENT, Ui.dp(this, 24)),
@@ -2822,6 +2834,315 @@ public class Main extends Activity {
         root.addView(note, noteLp);
 
         return scroll;
+    }
+
+    // ---------------------------------------------------- settings theme page
+    private View buildSettingsThemePage() {
+        stMonet = prefs.getBoolean("st_monet", true);
+        stColor = prefs.getInt("st_color", 0xFF3D7D56);
+        if (stMonet) {
+            stColor = getMonetPrimaryColor();
+        }
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setBackgroundColor(Ui.BG);
+
+        LinearLayout root = Ui.col(this);
+        root.setPadding(Ui.dp(this, 18), Ui.dp(this, 22), Ui.dp(this, 18), Ui.dp(this, 30));
+        scroll.addView(root, new FrameLayout.LayoutParams(-1, -2));
+
+        TextView title = Ui.label(this, "Системные Настройки", 26f, Ui.TEXT);
+        root.addView(pageTitle(title, "Перекраска акцентов и переключателей"));
+
+        stHint = hintCard();
+        stHint.setVisibility(View.GONE);
+        LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(-1, -2);
+        hintLp.bottomMargin = Ui.dp(this, 14);
+        root.addView(stHint, hintLp);
+
+        // ---- preview card
+        LinearLayout prevCard = Ui.col(this);
+        prevCard.setBackground(Ui.shape(this, Ui.SURFACE, 12f, Ui.BORDER_SOFT, 1f));
+        prevCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14));
+        prevCard.addView(Ui.section(this, "Предпросмотр акцента Настроек"));
+
+        LinearLayout prevRow = new LinearLayout(this);
+        prevRow.setOrientation(LinearLayout.HORIZONTAL);
+        prevRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams prLp = new LinearLayout.LayoutParams(-1, -2);
+        prLp.topMargin = Ui.dp(this, 12);
+
+        stPreviewSwatch = new ImageView(this);
+        stPreviewSwatch.setImageDrawable(Ui.pillShape(this, stColor, 0, 0));
+        prevRow.addView(stPreviewSwatch, new LinearLayout.LayoutParams(Ui.dp(this, 38), Ui.dp(this, 38)));
+
+        LinearLayout prevTextCol = Ui.col(this);
+        prevTextCol.setPadding(Ui.dp(this, 12), 0, Ui.dp(this, 8), 0);
+        stPreviewAccentText = Ui.text(this, String.format("#%06X", stColor & 0xFFFFFF), 15f, stColor);
+        stPreviewAccentText.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        TextView prevSub = Ui.text(this, "Акцент тумблеров, кнопок и ползунков в Настройках", 11.5f, Ui.MUTED);
+        prevTextCol.addView(stPreviewAccentText);
+        prevTextCol.addView(prevSub);
+        prevRow.addView(prevTextCol, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        stPreviewSwitch = new MaterialSwitch(this);
+        stPreviewSwitch.setChecked(true);
+        updateStPreviewSwitchTint();
+        prevRow.addView(stPreviewSwitch);
+        prevCard.addView(prevRow, prLp);
+
+        LinearLayout.LayoutParams prevCardLp = new LinearLayout.LayoutParams(-1, -2);
+        prevCardLp.bottomMargin = Ui.dp(this, 14);
+        root.addView(prevCard, prevCardLp);
+
+        // ---- mode card: Monet (Wallpaper) vs Manual
+        LinearLayout modeCard = Ui.col(this);
+        modeCard.setBackground(Ui.shape(this, Ui.SURFACE, 12f, Ui.BORDER_SOFT, 1f));
+        modeCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14));
+        modeCard.addView(Ui.section(this, "Режим цвета"));
+
+        LinearLayout monetRow = new LinearLayout(this);
+        monetRow.setOrientation(LinearLayout.HORIZONTAL);
+        monetRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams monetRowLp = new LinearLayout.LayoutParams(-1, -2);
+        monetRowLp.topMargin = Ui.dp(this, 8);
+
+        LinearLayout monetTextCol = Ui.col(this);
+        monetTextCol.addView(Ui.text(this, "Monet (цвета из обоев)", 14f, Ui.TEXT));
+        monetTextCol.addView(Ui.text(this, "Автоматически брать акцент из текущих обоев", 11.5f, Ui.MUTED));
+        monetRow.addView(monetTextCol, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        final MaterialSwitch stMonetSw = new MaterialSwitch(this);
+        stMonetSw.setChecked(stMonet);
+        tintSwitch(stMonetSw);
+        monetRow.addView(stMonetSw);
+        modeCard.addView(monetRow, monetRowLp);
+
+        // Manual color selector container
+        stManualBox = Ui.col(this);
+        stManualBox.setVisibility(stMonet ? View.GONE : View.VISIBLE);
+
+        String[] presets = {"#3D7D56", "#E53935", "#1E88E5", "#FDD835", "#8E24AA",
+                "#FB8C00", "#00ACC1", "#F06292", "#5D4037", "#455A64"};
+        LinearLayout swatchRow = new LinearLayout(this);
+        swatchRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams swLp = new LinearLayout.LayoutParams(-1, -2);
+        swLp.topMargin = Ui.dp(this, 12);
+        stManualBox.addView(swatchRow, swLp);
+        for (String hex : presets) {
+            final int color = parseColor(hex);
+            View sw = swatch(color);
+            sw.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    Ui.tap(v);
+                    setSettingsThemeColor(color);
+                }
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(this, 34), Ui.dp(this, 34));
+            lp.rightMargin = Ui.dp(this, 8);
+            swatchRow.addView(sw, lp);
+        }
+
+        // HEX input row
+        LinearLayout hexRow = new LinearLayout(this);
+        hexRow.setOrientation(LinearLayout.HORIZONTAL);
+        hexRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams hexLp = new LinearLayout.LayoutParams(-1, -2);
+        hexLp.topMargin = Ui.dp(this, 12);
+        stManualBox.addView(hexRow, hexLp);
+        hexRow.addView(Ui.label(this, "HEX:", 13f, Ui.MUTED));
+        stColorInput = new EditText(this);
+        stColorInput.setText(String.format("#%06X", stColor & 0xFFFFFF));
+        stColorInput.setInputType(InputType.TYPE_CLASS_TEXT);
+        stColorInput.setTextSize(13f);
+        stColorInput.setTextColor(Ui.TEXT);
+        stColorInput.setGravity(Gravity.CENTER);
+        stColorInput.setBackground(Ui.shape(this, Ui.INPUT_BG, 8f, Ui.BORDER, 1f));
+        stColorInput.setPadding(Ui.dp(this, 8), Ui.dp(this, 5), Ui.dp(this, 8), Ui.dp(this, 5));
+        LinearLayout.LayoutParams inputLp = new LinearLayout.LayoutParams(0, -2, 1f);
+        inputLp.leftMargin = Ui.dp(this, 10);
+        hexRow.addView(stColorInput, inputLp);
+        stColorInput.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(Editable s) {
+                try {
+                    setSettingsThemeColor(parseColor(s.toString().trim()));
+                } catch (Throwable ignored) {}
+            }
+        });
+
+        modeCard.addView(stManualBox);
+
+        stMonetSw.setOnCheckedChangeListener(new android.widget.CompoundButton.OnCheckedChangeListener() {
+            @Override public void onCheckedChanged(android.widget.CompoundButton b, boolean checked) {
+                Ui.tap(b);
+                stMonet = checked;
+                stManualBox.setVisibility(checked ? View.GONE : View.VISIBLE);
+                if (checked) {
+                    setSettingsThemeColor(getMonetPrimaryColor());
+                    toast("Акцент взят из обоев (Monet)");
+                }
+                saveSettingsThemePrefs();
+            }
+        });
+
+        LinearLayout.LayoutParams modeCardLp = new LinearLayout.LayoutParams(-1, -2);
+        modeCardLp.bottomMargin = Ui.dp(this, 14);
+        root.addView(modeCard, modeCardLp);
+
+        // ---- apply button
+        View apply = pillButton(M3Icons.play(Ui.ACCENT, Ui.dp(this, 18)),
+                "Перекрасить Настройки",
+                new View.OnClickListener() {
+                    @Override public void onClick(View v) { runSettingsThemeApply(); }
+                });
+        LinearLayout.LayoutParams applyLp = new LinearLayout.LayoutParams(-1, -2);
+        applyLp.bottomMargin = Ui.dp(this, 14);
+        root.addView(apply, applyLp);
+
+        // ---- status card
+        LinearLayout statusCard = Ui.col(this);
+        statusCard.setBackground(Ui.shape(this, Ui.INPUT_BG, 12f, Ui.BORDER, 1.2f));
+        statusCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 14), Ui.dp(this, 12));
+        stStatusText = Ui.text(this, "Выберите режим цвета и нажмите «Перекрасить Настройки»", 13f, Ui.MUTED);
+        statusCard.addView(stStatusText);
+        LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(-1, -2);
+        statusLp.bottomMargin = Ui.dp(this, 14);
+        root.addView(statusCard, statusLp);
+
+        TextView note = Ui.text(this,
+                "Генерирует системный акцент через Fabricated Overlay и тему OriginOS. Требуется режим игры.",
+                11.5f, Ui.MUTED);
+        LinearLayout.LayoutParams noteLp = new LinearLayout.LayoutParams(-1, -2);
+        noteLp.bottomMargin = Ui.dp(this, 24);
+        root.addView(note, noteLp);
+
+        return scroll;
+    }
+
+    private void updateStPreviewSwitchTint() {
+        if (stPreviewSwitch != null) {
+            try {
+                stPreviewSwitch.setThumbTintList(android.content.res.ColorStateList.valueOf(stColor));
+                int trackColor = Color.argb(90, Color.red(stColor), Color.green(stColor), Color.blue(stColor));
+                stPreviewSwitch.setTrackTintList(android.content.res.ColorStateList.valueOf(trackColor));
+            } catch (Throwable ignored) {}
+        }
+    }
+
+    private void setSettingsThemeColor(int color) {
+        stColor = color;
+        if (stColorInput != null) {
+            String hex = String.format("#%06X", color & 0xFFFFFF);
+            if (!stColorInput.getText().toString().equals(hex)) {
+                stColorInput.setText(hex);
+                stColorInput.setSelection(hex.length());
+            }
+        }
+        if (stPreviewSwatch != null) {
+            stPreviewSwatch.setImageDrawable(Ui.pillShape(this, color, 0, 0));
+        }
+        if (stPreviewAccentText != null) {
+            stPreviewAccentText.setText(String.format("#%06X", color & 0xFFFFFF));
+            stPreviewAccentText.setTextColor(color);
+        }
+        updateStPreviewSwitchTint();
+        saveSettingsThemePrefs();
+    }
+
+    private void saveSettingsThemePrefs() {
+        prefs.edit()
+                .putBoolean("st_monet", stMonet)
+                .putInt("st_color", stColor)
+                .apply();
+    }
+
+    private void runSettingsThemeApply() {
+        if (busy) {
+            toast("Дождитесь текущей команды");
+            return;
+        }
+        saveSettingsThemePrefs();
+        stRun = true;
+        stStatus("Применяю акцент к системным Настройкам…", Ui.ACCENT);
+        showStHint();
+        String cmd = settingsThemeCommand();
+        if (!apply(cmd)) {
+            stRun = false;
+            hideStHint();
+            stStatus("GC Tune не в списке игр — добавьте приложение и повторите", Ui.ERROR);
+        }
+    }
+
+    private String settingsThemeCommand() {
+        int c = stColor;
+        String hex = String.format("#%06X", c & 0xFFFFFF);
+        String argb = String.format("0x%08X", c);
+        final StringBuilder sb = new StringBuilder();
+        sb.append("COLOR='").append(hex).append("'; ");
+        sb.append("COLOR_INT='").append(argb).append("'; ");
+        sb.append("echo COLOR=$COLOR; ");
+        // 1) Fabricate runtime resource overlay for settings and framework
+        sb.append("cmd overlay fabricate --target android --name GCTuneAccent android:color/colorAccent 0x1c $COLOR_INT 2>/dev/null; ");
+        sb.append("cmd overlay fabricate --target com.android.settings --name GCTuneSettings theme_color 0x1c $COLOR_INT 2>/dev/null; ");
+        sb.append("cmd overlay fabricate --target com.android.settings --name GCTuneSettings colorAccent 0x1c $COLOR_INT 2>/dev/null; ");
+        // 2) Enable overlays
+        sb.append("cmd overlay enable android:GCTuneAccent 2>/dev/null; ");
+        sb.append("cmd overlay enable com.android.settings:GCTuneSettings 2>/dev/null; ");
+        // 3) OriginOS / BBK theme settings support
+        sb.append("settings put system theme_color \"$COLOR\" 2>/dev/null; ");
+        sb.append("settings put global theme_color \"$COLOR\" 2>/dev/null; ");
+        sb.append("settings put secure sys_accent_color \"$COLOR\" 2>/dev/null; ");
+        sb.append("settings put secure theme_customization_overlay_packages '{\"android.theme.customization.accent_color\":\"'$COLOR'\"}' 2>/dev/null; ");
+        // 4) Restart settings to apply changes cleanly
+        sb.append("am force-stop com.android.settings 2>/dev/null; ");
+        sb.append("am start -a android.settings.SETTINGS >/dev/null 2>&1; ");
+        sb.append("echo SETTINGS_APPLIED; ");
+        return sb.toString();
+    }
+
+    private void stStatus(String msg, int color) {
+        if (stStatusText != null) {
+            stStatusText.setText(msg);
+            stStatusText.setTextColor(color);
+        }
+    }
+
+    private void showStHint() {
+        if (stHint != null) {
+            stHint.setVisibility(View.VISIBLE);
+            if (stHintPulse == null) {
+                stHintPulse = ObjectAnimator.ofFloat(stHint, View.ALPHA, 1f, 0.35f);
+                stHintPulse.setDuration(700L);
+                stHintPulse.setRepeatCount(ValueAnimator.INFINITE);
+                stHintPulse.setRepeatMode(ValueAnimator.REVERSE);
+            }
+            stHintPulse.start();
+        }
+    }
+
+    private void hideStHint() {
+        if (stHintPulse != null) stHintPulse.cancel();
+        if (stHint != null) {
+            stHint.setAlpha(1f);
+            stHint.setVisibility(View.GONE);
+        }
+    }
+
+    private void settingsThemeResult(boolean ok, Entry e) {
+        stRun = false;
+        hideStHint();
+        String out = (ok && e != null && e.out != null) ? e.out : "";
+        if (!ok) {
+            stStatus("Нет ответа от uid 1000 — откройте режим игры и повторите", Ui.ERROR);
+        } else if (out.contains("SETTINGS_APPLIED")) {
+            stStatus("Акцент применен к Настройкам! Настройки перезапущены.", Ui.ACCENT);
+            toast("Настройки перекрашены!");
+        } else {
+            stStatus("Команда выполнена — проверьте системные Настройки", Ui.TEXT);
+        }
     }
 
     private void pickFontFile() {
@@ -3094,8 +3415,11 @@ public class Main extends Activity {
                 + "cmd appops set " + pkg + " RUN_IN_BACKGROUND allow >/dev/null 2>&1;"
                 + "cmd appops set " + pkg + " RUN_ANY_IN_BACKGROUND allow >/dev/null 2>&1;"
                 + "cmd appops set " + pkg + " START_FOREGROUND allow >/dev/null 2>&1;"
+                + "cmd appops set " + pkg + " WAKE_LOCK allow >/dev/null 2>&1;"
+                + "cmd appops set " + pkg + " BOOT_COMPLETED allow >/dev/null 2>&1;"
                 + "am set-inactive " + pkg + " false >/dev/null 2>&1;"
                 + "[ -f /data/bbkcore/forbidBgStartAppsName.txt ] && sed -i '/" + pkg + "/d' /data/bbkcore/forbidBgStartAppsName.txt 2>/dev/null;"
+                + "settings put system vivo_game_keep_alive 1 >/dev/null 2>&1;"
                 + "echo DOZE=$(cmd deviceidle whitelist =" + pkg + " 2>/dev/null);"
                 + "echo BGOP=$(appops get " + pkg + " RUN_ANY_IN_BACKGROUND 2>/dev/null)";
     }
@@ -4110,6 +4434,7 @@ public class Main extends Activity {
         if (themeRun) themeResult(ok, e);
         if (iconsRun) iconsResult(ok, e);
         if (fontThemeRun) fontResult(ok, e);
+        if (stRun) settingsThemeResult(ok, e);
         if (miscRun) miscResult(ok, e);
         resolveBridge(ok, e, "нет ответа от uid 1000");
         if (!ok) toast("Нет ответа — откройте шторку Game Cube");

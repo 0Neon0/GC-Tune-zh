@@ -26,11 +26,14 @@ import android.util.Log;
  * force-stop by the user still disables everything until the next manual
  * launch - that is an Android invariant no app can bypass.
  */
+import android.os.PowerManager;
+
 public class KeepAliveService extends Service {
 
     private static final String TAG = "GCTune";
     private static final String CH = "gctune_keep";
     private static final int NOTIF_ID = 102;
+    private PowerManager.WakeLock wakeLock;
 
     /** Alarm-based restart path used by onTaskRemoved. */
     public static void start(Context c) {
@@ -60,12 +63,37 @@ public class KeepAliveService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (!keepOn()) {
+            releaseWakeLock();
             stopSelf();
             return START_NOT_STICKY;
         }
         showNotification();
+        acquireWakeLock();
         // persist across memory kills; null-intent restart lands here too
         return START_STICKY;
+    }
+
+    private void acquireWakeLock() {
+        if (wakeLock != null && wakeLock.isHeld()) return;
+        try {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm != null) {
+                wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "GCTune:KeepAlive");
+                wakeLock.setReferenceCounted(false);
+                wakeLock.acquire();
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "wake lock acquire failed: " + t);
+        }
+    }
+
+    private void releaseWakeLock() {
+        try {
+            if (wakeLock != null && wakeLock.isHeld()) {
+                wakeLock.release();
+            }
+        } catch (Throwable ignored) {}
+        wakeLock = null;
     }
 
     private void showNotification() {
@@ -73,7 +101,7 @@ public class KeepAliveService extends Service {
             NotificationManager nm = getSystemService(NotificationManager.class);
             if (nm != null && nm.getNotificationChannel(CH) == null) {
                 NotificationChannel ch = new NotificationChannel(CH, "GC Tune",
-                        NotificationManager.IMPORTANCE_MIN);
+                        NotificationManager.IMPORTANCE_LOW);
                 ch.setShowBadge(false);
                 ch.setSound(null, null);
                 nm.createNotificationChannel(ch);
@@ -95,14 +123,14 @@ public class KeepAliveService extends Service {
     public void onTaskRemoved(Intent rootIntent) {
         // the user swiped the app away: come back in ~2 s via the alarm path
         if (keepOn()) {
-            KeepAliveReceiver.schedule(this, System.currentTimeMillis() + 2500L);
+            KeepAliveReceiver.schedule(this, System.currentTimeMillis() + 2000L);
         }
         super.onTaskRemoved(rootIntent);
     }
 
     @Override
     public void onDestroy() {
-        // system-initiated death: keep-alive alarm chain still re-raises us
+        releaseWakeLock();
         super.onDestroy();
     }
 
