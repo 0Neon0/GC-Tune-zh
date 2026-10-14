@@ -498,40 +498,11 @@ final class IconsTinter {
         float autoFgRatio = (shapeType == SHAPE_M3_SQUARE || shapeType == SHAPE_ROUNDED) ? 0.74f : 0.68f;
         float glyphTarget = shapeDimension * autoFgRatio;
 
-        if (!bgEnabled) {
-            Bitmap layer = drawIcon(icon, 0f, 0f, canvasSize, canvasSize, canvasSize);
-            if (layer == null) return null;
-            Bitmap tinted = tintBitmap(layer, tint, desat, lighten, strength, canvasSize);
-            layer.recycle();
-            if (tinted == null) return null;
+        // Always draw the background tile if a custom shape is selected or bgEnabled is on.
+        // If bgEnabled is false, use solid white or light neutral so the custom shape (circle, star, flower, etc.)
+        // is actually formed and visible on the desktop, rather than a transparent cutout!
+        int effectiveBgColor = bgEnabled ? bgColor : 0xFFFFFFFF;
 
-            Rect bbox = new Rect();
-            if (!alphaBBox(tinted, bbox, 10)) {
-                bbox.set(0, 0, canvasSize, canvasSize);
-            }
-
-            float s = glyphTarget / Math.max(bbox.width(), bbox.height());
-            float w = bbox.width() * s;
-            float h = bbox.height() * s;
-            RectF dst = new RectF(canvasSize / 2f - w / 2f, canvasSize / 2f - h / 2f,
-                    canvasSize / 2f + w / 2f, canvasSize / 2f + h / 2f);
-
-            Bitmap out = Bitmap.createBitmap(canvasSize, canvasSize, Bitmap.Config.ARGB_8888);
-            try {
-                Canvas c = new Canvas(out);
-                c.clipPath(shapePath);
-                Paint gp = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-                c.drawBitmap(tinted, bbox, dst, gp);
-            } catch (Throwable t) {
-                out.recycle();
-                tinted.recycle();
-                return null;
-            }
-            tinted.recycle();
-            return out;
-        }
-
-        // ---- compose layer: styled background tile + foreground icon ----
         Drawable fgSource = icon;
         if (icon instanceof AdaptiveIconDrawable) {
             try {
@@ -573,7 +544,7 @@ final class IconsTinter {
         try {
             Canvas c = new Canvas(out);
             Paint bp = new Paint(Paint.ANTI_ALIAS_FLAG);
-            bp.setColor(bgColor);
+            bp.setColor(effectiveBgColor);
             c.drawPath(shapePath, bp);
             c.clipPath(shapePath);
             Paint gp = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
