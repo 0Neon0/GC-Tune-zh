@@ -480,23 +480,22 @@ final class IconsTinter {
 
         // Standard target icon dimension is 192px at 100%.
         float scaleFactor = iconScale / 100.0f;
-        // The shape scales within the standard 192 canvas, keeping comfortable padding
-        // so launcher doesn't crop it. Max shape dimension is kept within canvas.
-        int shapeDimension = Math.round(SIZE * Math.min(1.0f, scaleFactor));
+        // In OriginOS, standard launcher icons fill ~96% of the cell canvas.
+        // We preserve a 4px anti-aliasing margin so geometric edges are smooth and crisp.
+        int shapeDimension = Math.round((SIZE - 6) * Math.min(1.0f, scaleFactor));
         if (scaleFactor > 1.0f) {
-            // For oversized scales, allow shape up to 192 and canvas up to oversized size
-            shapeDimension = Math.round(SIZE * Math.min(1.35f, scaleFactor));
+            shapeDimension = Math.round((SIZE - 6) * Math.min(1.25f, scaleFactor));
         }
-        int canvasSize = Math.max(SIZE, shapeDimension);
+        int canvasSize = Math.max(SIZE, shapeDimension + 6);
         float offset = (canvasSize - shapeDimension) / 2.0f;
 
         // The background shape fills the shape dimension centered in canvasSize
         RectF iconBounds = new RectF(offset, offset, offset + shapeDimension, offset + shapeDimension);
         Path shapePath = buildShapePath(shapeType, iconBounds, radiusPct);
 
-        // Auto safe ratio for inner glyph (typically 52-58% of the shape size)
-        // so it never overflows or touches the edges of complex M3 shapes (stars, flowers, hearts)
-        float autoFgRatio = (shapeType == SHAPE_M3_SQUARE || shapeType == SHAPE_ROUNDED) ? 0.60f : 0.52f;
+        // Prominent glyph scale: 72-76% for rounded/square, 68% for expressive shapes
+        // so the icon logo is clearly visible, large and sharp without overflowing
+        float autoFgRatio = (shapeType == SHAPE_M3_SQUARE || shapeType == SHAPE_ROUNDED) ? 0.74f : 0.68f;
         float glyphTarget = shapeDimension * autoFgRatio;
 
         if (!bgEnabled) {
@@ -739,9 +738,9 @@ final class IconsTinter {
         Bitmap out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(out);
         float scaleFactor = iconScale / 100.0f;
-        int shapeDim = Math.round(width * Math.min(1.0f, scaleFactor));
+        int shapeDim = Math.round((width - 6) * Math.min(1.0f, scaleFactor));
         if (scaleFactor > 1.0f) {
-            shapeDim = Math.round(width * Math.min(1.35f, scaleFactor));
+            shapeDim = Math.round((width - 6) * Math.min(1.25f, scaleFactor));
         }
         float offset = (width - shapeDim) / 2.0f;
         RectF r = new RectF(offset, offset, offset + shapeDim, offset + shapeDim);
@@ -759,9 +758,9 @@ final class IconsTinter {
         Bitmap out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(out);
         float scaleFactor = iconScale / 100.0f;
-        int shapeDim = Math.round(width * Math.min(1.0f, scaleFactor));
+        int shapeDim = Math.round((width - 6) * Math.min(1.0f, scaleFactor));
         if (scaleFactor > 1.0f) {
-            shapeDim = Math.round(width * Math.min(1.35f, scaleFactor));
+            shapeDim = Math.round((width - 6) * Math.min(1.25f, scaleFactor));
         }
         float offset = (width - shapeDim) / 2.0f;
         RectF r = new RectF(offset, offset, offset + shapeDim, offset + shapeDim);

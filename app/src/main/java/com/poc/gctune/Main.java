@@ -2379,6 +2379,12 @@ public class Main extends Activity {
             Settings.Global.putInt(getContentResolver(), "theme_icons_style_explore", 1);
             Settings.Global.putInt(getContentResolver(), "theme_icons_style_explore", 2);
             Settings.Global.putInt(getContentResolver(), "theme_icons_style_explore", 1);
+            // Map iconsScale (40-160%) to OriginOS desktop icon size: 0 (small), 1 (normal), 2 (large), 3 (huge)
+            int originSize = (iconsScale <= 70) ? 0 : (iconsScale <= 95 ? 1 : (iconsScale <= 125 ? 2 : 3));
+            try {
+                Settings.System.putInt(getContentResolver(), "current_desktop_iconsize", originSize);
+                Settings.System.putInt(getContentResolver(), "deform_icons_size_explore", originSize);
+            } catch (Throwable ignored) {}
             return true;
         } catch (Throwable t) {
             Log.e("GCTune", "toggleIconsStyle failed: " + t);
@@ -2391,6 +2397,11 @@ public class Main extends Activity {
         try {
             Settings.Global.putInt(getContentResolver(), "theme_icons_style_explore",
                     Integer.parseInt(old.trim()));
+            int originSize = (iconsScale <= 70) ? 0 : (iconsScale <= 95 ? 1 : (iconsScale <= 125 ? 2 : 3));
+            try {
+                Settings.System.putInt(getContentResolver(), "current_desktop_iconsize", originSize);
+                Settings.System.putInt(getContentResolver(), "deform_icons_size_explore", originSize);
+            } catch (Throwable ignored) {}
         } catch (Throwable ignored) {
         }
     }

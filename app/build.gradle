@@ -10,8 +10,8 @@ android {
         applicationId 'com.poc.gctune'
         minSdk 26
         targetSdk 30
-        versionCode 12
-        versionName '1.2.1'
+        versionCode 13
+        versionName '1.2.2'
     }
 
     compileOptions {
