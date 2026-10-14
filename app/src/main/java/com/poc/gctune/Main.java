@@ -2312,9 +2312,9 @@ public class Main extends Activity {
                     mask192.compress(Bitmap.CompressFormat.PNG, 100, m192os);
                     m192os.close();
 
-                    // Generate shape background with selected color (or white) so launcher's background tile matches shape
+                    // Generate shape background with selected color (or tonal color from icon) so launcher's background tile matches shape
                     Bitmap bg320 = IconsTinter.generateBg(320, 320, iconsShape, iconsRadius, iconsScale,
-                            iconsBgEnabled ? iconsBgColor : 0xFFFFFFFF);
+                            iconsBgEnabled ? iconsBgColor : IconsTinter.getToneBgColor(iconsColor));
                     FileOutputStream bgOs = new FileOutputStream(new File(launcherDir, "icon_bg_default.png"));
                     bg320.compress(Bitmap.CompressFormat.PNG, 100, bgOs);
                     bgOs.close();

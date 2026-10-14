@@ -480,13 +480,9 @@ final class IconsTinter {
 
         // Standard target icon dimension is 192px at 100%.
         float scaleFactor = iconScale / 100.0f;
-        // In OriginOS, standard launcher icons fill ~96% of the cell canvas.
-        // We preserve a 4px anti-aliasing margin so geometric edges are smooth and crisp.
-        int shapeDimension = Math.round((SIZE - 6) * Math.min(1.0f, scaleFactor));
-        if (scaleFactor > 1.0f) {
-            shapeDimension = Math.round((SIZE - 6) * Math.min(1.25f, scaleFactor));
-        }
-        int canvasSize = Math.max(SIZE, shapeDimension + 6);
+        // Allows icons to become truly large when scaleFactor > 1.0f
+        int shapeDimension = Math.round((SIZE - 4) * scaleFactor);
+        int canvasSize = Math.max(SIZE, shapeDimension + 4);
         float offset = (canvasSize - shapeDimension) / 2.0f;
 
         // The background shape fills the shape dimension centered in canvasSize
@@ -498,10 +494,11 @@ final class IconsTinter {
         float autoFgRatio = (shapeType == SHAPE_M3_SQUARE || shapeType == SHAPE_ROUNDED) ? 0.74f : 0.68f;
         float glyphTarget = shapeDimension * autoFgRatio;
 
-        // Always draw the background tile if a custom shape is selected or bgEnabled is on.
-        // If bgEnabled is false, use solid white or light neutral so the custom shape (circle, star, flower, etc.)
-        // is actually formed and visible on the desktop, rather than a transparent cutout!
-        int effectiveBgColor = bgEnabled ? bgColor : 0xFFFFFFFF;
+        // Effective background color for the shape:
+        // If bgEnabled is true, use the custom bgColor chosen by the user.
+        // Otherwise, derive a sleek, dark harmonized container from the icon's own color (tint),
+        // NEVER pure white or unrelated Monet colors!
+        int effectiveBgColor = bgEnabled ? bgColor : getToneBgColor(tint);
 
         Drawable fgSource = icon;
         if (icon instanceof AdaptiveIconDrawable) {
@@ -699,6 +696,20 @@ final class IconsTinter {
     }
 
     /**
+     * Derives a deep harmonious tonal background color matching the icon's tint.
+     * Keeps 20% of the icon's color blended onto an elegant dark surface.
+     */
+    static int getToneBgColor(int tint) {
+        int tr = Color.red(tint);
+        int tg = Color.green(tint);
+        int tb = Color.blue(tint);
+        int bgR = Math.round(18 + tr * 0.20f);
+        int bgG = Math.round(20 + tg * 0.20f);
+        int bgB = Math.round(24 + tb * 0.20f);
+        return Color.rgb(Math.min(255, bgR), Math.min(255, bgG), Math.min(255, bgB));
+    }
+
+    /**
      * Generates an unconstrained launcher mask (solid black covering the full canvas).
      * By filling the entire canvas with solid black (100% opacity), the OriginOS launcher
      * does NOT apply its own hardware squircle/square clipping mask to the icon!
@@ -709,10 +720,7 @@ final class IconsTinter {
         Bitmap out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(out);
         float scaleFactor = iconScale / 100.0f;
-        int shapeDim = Math.round((width - 6) * Math.min(1.0f, scaleFactor));
-        if (scaleFactor > 1.0f) {
-            shapeDim = Math.round((width - 6) * Math.min(1.25f, scaleFactor));
-        }
+        int shapeDim = Math.round((width - 4) * scaleFactor);
         float offset = (width - shapeDim) / 2.0f;
         RectF r = new RectF(offset, offset, offset + shapeDim, offset + shapeDim);
         Path shapePath = buildShapePath(shapeType, r, radiusPct);
@@ -729,10 +737,7 @@ final class IconsTinter {
         Bitmap out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(out);
         float scaleFactor = iconScale / 100.0f;
-        int shapeDim = Math.round((width - 6) * Math.min(1.0f, scaleFactor));
-        if (scaleFactor > 1.0f) {
-            shapeDim = Math.round((width - 6) * Math.min(1.25f, scaleFactor));
-        }
+        int shapeDim = Math.round((width - 4) * scaleFactor);
         float offset = (width - shapeDim) / 2.0f;
         RectF r = new RectF(offset, offset, offset + shapeDim, offset + shapeDim);
         Path shapePath = buildShapePath(shapeType, r, radiusPct);
