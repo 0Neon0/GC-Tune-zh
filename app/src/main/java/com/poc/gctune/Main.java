@@ -204,7 +204,7 @@ public class Main extends Activity {
     private int page = 0;
 
     /**
-     * Section activities (Тема/Иконки/Прочее/Шрифты) subclass Main and return
+     * 各分栏页面（主题/图标/其他/字体）继承 Main 并返回
      * their page index here; the full app (nav bar, console, hub) returns -1.
      */
     protected int sectionPage() {
@@ -4051,7 +4051,7 @@ public class Main extends Activity {
         }
         bridgeAck = curAck;
         writeAdbMirror(curAck, "PENDING", "-", "");
-        return null; // результат придёт в finishRun → resolveBridge
+        return null; // 结果会通过 finishRun → resolveBridge 返回
     }
 
     /** Releases the waiting provider call and mirrors the final result. */

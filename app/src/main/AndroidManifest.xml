@@ -39,7 +39,7 @@
         <activity android:name=".PrefsActivity" android:exported="false" />
         <!-- owns layer + ACK receiver + wake retries while a command is pending -->
         <service android:name=".ChannelService" android:exported="false" />
-        <!-- "Неубиваемый фон": sticky foreground service (see KeepAliveService) -->
+        <!-- "后台常驻保活"：常驻前台服务（见 KeepAliveService） -->
         <service android:name=".KeepAliveService" android:exported="false" />
         <!-- self-rescheduling watchdog alarm for the keep-alive chain -->
         <receiver android:name=".KeepAliveReceiver" android:exported="false" />

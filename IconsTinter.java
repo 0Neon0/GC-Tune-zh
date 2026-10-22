@@ -51,30 +51,30 @@ final class IconsTinter {
     }
 
     // Shape presets (Material 3 Expressive Comprehensive Collection)
-    static final int SHAPE_ROUNDED = 0;    // Скругленный квадрат
-    static final int SHAPE_SQUIRCLE = 1;   // Squircle / Суперэллипс
-    static final int SHAPE_CIRCLE = 2;     // Круг
-    static final int SHAPE_TEARDROP = 3;   // Капля (закругленный угол)
-    static final int SHAPE_HEXAGON = 4;    // Шестигранник
-    static final int SHAPE_OCTAGON = 5;    // Восьмигранник
-    static final int SHAPE_STAR = 6;       // Цветок (12 лепестков)
-    static final int SHAPE_PEBBLE = 7;     // Галька (асимметричная)
-    static final int SHAPE_PENTAGON = 8;   // Пятигранник
-    static final int SHAPE_DIAMOND = 9;    // Ромб / Diamond
-    static final int SHAPE_CLOVER = 10;    // Клевер (4 лепестка)
-    static final int SHAPE_ARCH = 11;      // Арка (закругленный верх)
-    static final int SHAPE_SUNBURST = 12;  // Солнце (8 лучей)
-    static final int SHAPE_HEART = 13;     // Сердце (M3 Expressive Heart)
-    static final int SHAPE_TRIANGLE = 14;  // Треугольник скругленный
-    static final int SHAPE_SEMI_CIRCLE = 15;// Полукруг (Flat bottom)
-    static final int SHAPE_PILL_V = 16;    // Вертикальная капсула / Pill
-    static final int SHAPE_BURST16 = 17;   // Острая звезда (16 лучей)
-    static final int SHAPE_FLOWER16 = 18;  // Ромашка (16 круглых лепестков)
-    static final int SHAPE_SCALLOP = 19;   // Волнистый круг (Scallop)
-    static final int SHAPE_BUN = 20;       // Булочка (pill с выемкой снизу)
-    static final int SHAPE_PIXEL = 21;     // Пиксельный значок (Pixelated badge)
-    static final int SHAPE_CORNER_ROUND = 22; // Скруглен 1 угол (Quarter round)
-    static final int SHAPE_SLANTED = 23;   // Скошенный параллелограмм (Slanted)
+    static final int SHAPE_ROUNDED = 0;    // 圆角方形
+    static final int SHAPE_SQUIRCLE = 1;   // 超椭圆（Squircle）
+    static final int SHAPE_CIRCLE = 2;     // 圆形
+    static final int SHAPE_TEARDROP = 3;   // 水滴（单角圆角）
+    static final int SHAPE_HEXAGON = 4;    // 六边形
+    static final int SHAPE_OCTAGON = 5;    // 八边形
+    static final int SHAPE_STAR = 6;       // 花朵（12 瓣）
+    static final int SHAPE_PEBBLE = 7;     // 鹅卵石（非对称）
+    static final int SHAPE_PENTAGON = 8;   // 五边形
+    static final int SHAPE_DIAMOND = 9;    // 菱形（Diamond）
+    static final int SHAPE_CLOVER = 10;    // 四叶草（4 瓣）
+    static final int SHAPE_ARCH = 11;      // 拱形（上部圆角）
+    static final int SHAPE_SUNBURST = 12;  // 太阳（8 道光芒）
+    static final int SHAPE_HEART = 13;     // 心形（M3 Expressive Heart）
+    static final int SHAPE_TRIANGLE = 14;  // 圆角三角形
+    static final int SHAPE_SEMI_CIRCLE = 15;// 半圆（底部平直）
+    static final int SHAPE_PILL_V = 16;    // 竖向胶囊（Pill）
+    static final int SHAPE_BURST16 = 17;   // 锐角星形（16 道光芒）
+    static final int SHAPE_FLOWER16 = 18;  // 雏菊（16 个圆瓣）
+    static final int SHAPE_SCALLOP = 19;   // 波浪形圆（Scallop）
+    static final int SHAPE_BUN = 20;       // 面包形（底部带凹口的胶囊）
+    static final int SHAPE_PIXEL = 21;     // 像素徽章（Pixelated badge）
+    static final int SHAPE_CORNER_ROUND = 22; // 单角圆角（Quarter round）
+    static final int SHAPE_SLANTED = 23;   // 斜切平行四边形（Slanted）
 
     /**
      * Builds a geometric Path for the icon background tile or mask within the given rectangle.

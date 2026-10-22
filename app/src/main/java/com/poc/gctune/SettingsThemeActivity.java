@@ -1,7 +1,7 @@
 package com.poc.gctune;
 
 /**
- * Standalone «Системные Настройки» page, opened from the Кастомизация hub.
+ * 独立页面「系统设置」，从「个性化」入口进入。
  * Inherits all page logic from Main; sectionPage() selects the built page.
  */
 public class SettingsThemeActivity extends Main {

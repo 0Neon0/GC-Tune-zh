@@ -20,7 +20,7 @@ import android.widget.Toast;
 
 /**
  * First run onboarding: points the user to
- *   Ультраигровой режим -> Поддерживаемые игры -> Другое -> GC Tune
+ *   电竞模式 -> 支持的游戏 -> 其他 -> GC Tune
  * and jumps there automatically the very first time.
  */
 public class SetupActivity extends Activity {
