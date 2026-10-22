@@ -69,15 +69,15 @@ adb shell pm grant com.poc.gctune android.permission.WRITE_SECURE_SETTINGS
 
 ```
  +-------------------------------------------------------+
- |                       GC Tune                         |
- |  com.poc.gctune（Activity / 前台服务）                  |
+ |                       GC Tune                      |
+ |  com.poc.gctune（Activity / 前台服务）   |
  +-------------------------------------------------------+
                               |
                     SurfaceControl / IPC
                               v
  +-------------------------------------------------------+
- |                     游戏魔盒子系统                      |
- |              SurfaceFlinger / uid 1000                |
+ |                     游戏魔盒子系统               |
+ |              SurfaceFlinger / uid 1000        |
  +-------------------------------------------------------+
                               |
           +-------------------+-------------------+
