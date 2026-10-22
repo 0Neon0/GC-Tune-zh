@@ -11,12 +11,12 @@ import android.util.Log;
 /**
  * Keep-alive watchdog: a self-rescheduling alarm that survives swipe-away,
  * process death and doze (setAndAllowWhileIdle needs no exact-alarm
- * permission). While the "Неубиваемый фон" toggle is on, every INTERVAL the
+ * permission). While the "后台常驻保活" toggle is on, every INTERVAL the
  * alarm fires, raises the KeepAliveService priority and schedules the next
  * tick - so the process always comes back even if the task was cleared.
  *
  * A plain force-stop by the user still wins (the system drops all alarms
- * until the next manual launch) - documented on the "Прочее" page.
+ * until the next manual launch) - documented on the "其他" page.
  */
 public class KeepAliveReceiver extends BroadcastReceiver {
 

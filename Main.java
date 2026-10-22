@@ -155,7 +155,7 @@ public class Main extends Activity {
     /** Appended by the payload after the user command; travels inside the blob. */
     private static final String RC_MARK = "__RC__";
     private static final Pattern RC_PAT = Pattern.compile(RC_MARK + "(-?\\d+)\\s*$");
-    private static final String NO_OUTPUT = "(команда выполнена без текстового вывода)";
+    private static final String NO_OUTPUT = "（命令已执行，无文本输出）";
     private static final int MAX_ENTRIES = 60;
 
     private Handler h;
@@ -447,7 +447,7 @@ public class Main extends Activity {
     }
 
     private View pasteButton() {
-        TextView paste = Ui.label(this, "Вставить", 13.5f, Ui.ACCENT);
+        TextView paste = Ui.label(this, "粘贴", 13.5f, Ui.ACCENT);
         paste.setGravity(Gravity.CENTER);
         paste.setPadding(Ui.dp(this, 18), Ui.dp(this, 12), Ui.dp(this, 18), Ui.dp(this, 12));
         paste.setBackground(Ui.pillRipple(this, Ui.PRIMARY, 0x40FFFFFF));
@@ -483,11 +483,11 @@ public class Main extends Activity {
         row.setPadding(Ui.dp(this, 8), Ui.dp(this, 6), Ui.dp(this, 8), Ui.dp(this, 6));
 
         navItems[PAGE_SHELL] = navItem(PAGE_SHELL,
-                M3Icons.terminal(Ui.MUTED, Ui.dp(this, 22)), "Shell");
+                M3Icons.terminal(Ui.MUTED, Ui.dp(this, 22)), "命令行");
         navItems[PAGE_CUSTOM] = navItem(PAGE_CUSTOM,
-                M3Icons.grid(Ui.MUTED, Ui.dp(this, 22)), "Кастомизация");
+                M3Icons.grid(Ui.MUTED, Ui.dp(this, 22)), "个性化");
         navItems[PAGE_SETTINGS] = navItem(PAGE_SETTINGS,
-                M3Icons.tune(Ui.MUTED, Ui.dp(this, 22)), "Настройки");
+                M3Icons.tune(Ui.MUTED, Ui.dp(this, 22)), "设置");
         for (View v : navItems) {
             if (v == null) continue;
             row.addView(v, new LinearLayout.LayoutParams(0, -2, 1f));
@@ -732,7 +732,7 @@ public class Main extends Activity {
         cmdInput.setBackground(null);
         cmdInput.setTextColor(Ui.TEXT);
         cmdInput.setHintTextColor(Ui.MUTED);
-        cmdInput.setHint("Команда или скрипт");
+        cmdInput.setHint("命令或脚本");
         cmdInput.setTypeface(Typeface.MONOSPACE);
         cmdInput.setTextSize(14f);
         cmdInput.setGravity(Gravity.TOP | Gravity.START);
@@ -782,7 +782,7 @@ public class Main extends Activity {
         // ---- header: caption + copy-to-clipboard
         LinearLayout head = Ui.row(this);
         head.setPadding(Ui.dp(this, 18), Ui.dp(this, 12), Ui.dp(this, 12), Ui.dp(this, 10));
-        head.addView(Ui.section(this, "Консоль"),
+        head.addView(Ui.section(this, "控制台"),
                 new LinearLayout.LayoutParams(0, -2, 1f));
 
         ImageView copyBtn = new ImageView(this);
@@ -852,7 +852,7 @@ public class Main extends Activity {
     /** Plain-text dump of the console for the copy button. */
     private void copyLog() {
         if (entries.isEmpty()) {
-            toast("Консоль пуста");
+            toast("控制台为空");
             return;
         }
         StringBuilder sb = new StringBuilder();
@@ -861,8 +861,8 @@ public class Main extends Activity {
                 sb.append(e.out).append('\n');
             } else {
                 sb.append("uid1000$ ").append(e.cmd).append('\n');
-                if (e.pending) sb.append("…выполняется\n");
-                else if (e.failed) sb.append("нет ответа от uid 1000\n");
+                if (e.pending) sb.append("…执行中\n");
+                else if (e.failed) sb.append("uid 1000 无响应\n");
                 else {
                     sb.append(e.out).append('\n');
                     if (e.rc != RC_UNKNOWN) sb.append("rc ").append(e.rc).append('\n');
@@ -874,9 +874,9 @@ public class Main extends Activity {
             android.content.ClipboardManager clipboard =
                     (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("GC Tune", sb.toString()));
-            toast("Вывод скопирован");
+            toast("输出已复制");
         } catch (Throwable t) {
-            toast("Не удалось скопировать");
+            toast("复制失败");
         }
     }
 
@@ -890,8 +890,8 @@ public class Main extends Activity {
         root.setPadding(Ui.dp(this, 18), Ui.dp(this, 22), Ui.dp(this, 18), Ui.dp(this, 30));
         scroll.addView(root, new FrameLayout.LayoutParams(-1, -2));
 
-        TextView title = Ui.label(this, "Тема", 26f, Ui.TEXT);
-        root.addView(pageTitle(title, "Установка и применение .itz"));
+        TextView title = Ui.label(this, "主题", 26f, Ui.TEXT);
+        root.addView(pageTitle(title, ".itz 安装与应用"));
 
         themeHint = hintCard();
         themeHint.setVisibility(View.GONE);
@@ -903,14 +903,14 @@ public class Main extends Activity {
         LinearLayout fileCard = Ui.col(this);
         fileCard.setBackground(Ui.shape(this, Ui.SURFACE, 12f, Ui.BORDER_SOFT, 1f));
         fileCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14));
-        fileCard.addView(Ui.section(this, "Файл темы (.itz)"));
+        fileCard.addView(Ui.section(this, "主题文件（.itz）"));
 
-        themeFileText = Ui.text(this, "файл не выбран", 14f, Ui.TEXT);
+        themeFileText = Ui.text(this, "未选择文件", 14f, Ui.TEXT);
         LinearLayout.LayoutParams fileLp = new LinearLayout.LayoutParams(-2, -2);
         fileLp.topMargin = Ui.dp(this, 8);
         fileCard.addView(themeFileText, fileLp);
 
-        View choose = pillButton(M3Icons.folder(Ui.ACCENT, Ui.dp(this, 18)), "Выбрать .itz",
+        View choose = pillButton(M3Icons.folder(Ui.ACCENT, Ui.dp(this, 18)), "选择 .itz",
                 new View.OnClickListener() {
                     @Override public void onClick(View v) { pickThemeFile(); }
                 });
@@ -924,7 +924,7 @@ public class Main extends Activity {
 
         // ---- install button
         View install = pillButton(M3Icons.play(Ui.ACCENT, Ui.dp(this, 18)),
-                "Установить и открыть iTheme",
+                "安装并打开 iTheme",
                 new View.OnClickListener() {
                     @Override public void onClick(View v) { runThemeInstall(); }
                 });
@@ -937,14 +937,14 @@ public class Main extends Activity {
         LinearLayout statusCard = Ui.col(this);
         statusCard.setBackground(Ui.shape(this, Ui.INPUT_BG, 12f, Ui.BORDER, 1.2f));
         statusCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 14), Ui.dp(this, 12));
-        themeStatusText = Ui.text(this, "Выберите .itz и нажмите «Установить»", 13f, Ui.MUTED);
+        themeStatusText = Ui.text(this, "选择 .itz 后点击「安装」", 13f, Ui.MUTED);
         statusCard.addView(themeStatusText);
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(-1, -2);
         statusLp.bottomMargin = Ui.dp(this, 14);
         root.addView(statusCard, statusLp);
 
         TextView note = Ui.text(this,
-                "Копия файла — в Download/gctune. Применение — при открытом режиме игры.",
+                "文件副本位于 Download/gctune。需在游戏模式开启时应用。",
                 11.5f, Ui.MUTED);
         LinearLayout.LayoutParams noteLp = new LinearLayout.LayoutParams(-1, -2);
         noteLp.bottomMargin = Ui.dp(this, 24);
@@ -1028,10 +1028,10 @@ public class Main extends Activity {
         card.addView(arrow, new LinearLayout.LayoutParams(Ui.dp(this, 32), Ui.dp(this, 32)));
 
         LinearLayout col = Ui.col(this);
-        col.addView(Ui.label(this, "Откройте режим игры", 15.5f, Ui.ACCENT));
+        col.addView(Ui.label(this, "请打开游戏模式", 15.5f, Ui.ACCENT));
         TextView sub = Ui.text(this,
-                "Команда выполнится сама, как только откроете шторку Game Cube — "
-                        + "FpsManager запустит её автоматически.", 12f, Ui.TEXT);
+                "打开游戏魔盒面板后命令会自动执行 — "
+                        + "FpsManager 会自动启动它。", 12f, Ui.TEXT);
         LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(-1, -2);
         subLp.topMargin = Ui.dp(this, 4);
         col.addView(sub, subLp);
@@ -1050,9 +1050,9 @@ public class Main extends Activity {
                 "application/octet-stream", "application/zip", "application/x-zip-compressed", "*/*"});
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         try {
-            startActivityForResult(Intent.createChooser(intent, "Файл темы (.itz)"), REQ_PICK_ITZ);
+            startActivityForResult(Intent.createChooser(intent, "主题文件（.itz）"), REQ_PICK_ITZ);
         } catch (Throwable t) {
-            toast("Проводник недоступен");
+            toast("文件管理器不可用");
         }
     }
 
@@ -1064,14 +1064,14 @@ public class Main extends Activity {
      */
     private void stageThemeFile(final Uri src) {
         if (staging) {
-            toast("Файл ещё готовится");
+            toast("文件仍在准备中");
             return;
         }
         staging = true;
         stagedPath = null;
         stagedMd5 = null;
-        themeFileText.setText("подготовка…");
-        themeStatus("Читаю файл…", Ui.MUTED);
+        themeFileText.setText("准备中…");
+        themeStatus("正在读取文件…", Ui.MUTED);
         new Thread(new Runnable() {
             @Override public void run() {
                 try {
@@ -1113,7 +1113,7 @@ public class Main extends Activity {
                             }
                         }
                         if (staged == null) {
-                            throw firstErr != null ? firstErr : new Exception("копирование не удалось");
+                            throw firstErr != null ? firstErr : new Exception("复制失败");
                         }
                         // reading it back proves the reported path really holds the copy
                         md5 = md5File(new File(staged));
@@ -1134,20 +1134,20 @@ public class Main extends Activity {
                             if (n > 0) {
                                 // rename replaces the destination atomically (same dir)
                                 if (!tmp.renameTo(dst)) {
-                                    throw new Exception("не удалось записать " + dst.getName());
+                                    throw new Exception("写入失败 " + dst.getName());
                                 }
                                 path = dst.getAbsolutePath();
                                 md5 = md5File(dst);
-                                idNote = "id подменены: " + n + " → "
+                                idNote = "id 已替换: " + n + " → "
                                         + ThemePatcher.FREE_ID + "/" + ThemePatcher.FREE_UID;
                             } else {
                                 tmp.delete();
-                                idNote = "description.xml без id — файл не тронут";
+                                idNote = "description.xml 缺少 id — 文件未改动";
                             }
                         } catch (Throwable t) {
                             Log.e("GCTune", "id patch failed: " + t);
                             tmp.delete();
-                            idNote = "id НЕ подменены: " + t.getMessage();
+                            idNote = "id 未替换: " + t.getMessage();
                         }
                     }
 
@@ -1162,7 +1162,7 @@ public class Main extends Activity {
                             stagedPath = fp;
                             stagedMd5 = fm;
                             themeFileText.setText(picked + " · " + sizeTxt + "\n" + fp);
-                            themeStatus("Файл готов, md5 " + fm + " — можно устанавливать"
+                            themeStatus("文件已就绪，md5 " + fm + " — 可以安装"
                                     + (idNoteF != null ? "\n" + idNoteF : ""), Ui.TEXT);
                         }
                     });
@@ -1172,8 +1172,8 @@ public class Main extends Activity {
                             staging = false;
                             stagedPath = null;
                             stagedMd5 = null;
-                            themeFileText.setText("файл не выбран");
-                            themeStatus("Ошибка подготовки: " + t.getMessage(), Ui.ERROR);
+                            themeFileText.setText("未选择文件");
+                            themeStatus("准备错误: " + t.getMessage(), Ui.ERROR);
                         }
                     });
                 }
@@ -1263,11 +1263,11 @@ public class Main extends Activity {
 
         stagedBytes = 0;
         InputStream in = r.openInputStream(src);
-        if (in == null) throw new Exception("источник недоступен");
+        if (in == null) throw new Exception("源不可用");
         OutputStream os = r.openOutputStream(out);
         if (os == null) {
             in.close();
-            throw new Exception("хранилище недоступно");
+            throw new Exception("存储不可用");
         }
         try {
             byte[] buf = new byte[64 * 1024];
@@ -1298,11 +1298,11 @@ public class Main extends Activity {
     /** Fallback: app-specific external dir (needs no permission on any API level). */
     private String copyToAppFiles(Uri src, String name) throws Exception {
         File dir = getExternalFilesDir(null);
-        if (dir == null) throw new Exception("нет внешнего хранилища");
+        if (dir == null) throw new Exception("无外部存储");
         File f = new File(dir, name);
 
         InputStream in = getContentResolver().openInputStream(src);
-        if (in == null) throw new Exception("источник недоступен");
+        if (in == null) throw new Exception("源不可用");
         OutputStream os = new FileOutputStream(f);
         stagedBytes = 0;
         try {
@@ -1322,33 +1322,33 @@ public class Main extends Activity {
 
     private static String humanSize(long bytes) {
         if (bytes >= 1048576L) {
-            return String.format(java.util.Locale.US, "%.1f МБ", bytes / 1048576.0);
+            return String.format(java.util.Locale.US, "%.1f MB", bytes / 1048576.0);
         }
-        if (bytes >= 1024L) return (bytes / 1024L) + " КБ";
-        return bytes + " Б";
+        if (bytes >= 1024L) return (bytes / 1024L) + " KB";
+        return bytes + " B";
     }
 
     // ---------------------------------------------------------- theme: install
     private void runThemeInstall() {
         if (busy) {
-            toast("Дождитесь текущей команды");
+            toast("请等待当前命令完成");
             return;
         }
         if (staging) {
-            toast("Файл ещё готовится — подождите");
+            toast("文件仍在准备中 — 请稍候");
             return;
         }
         if (stagedPath == null || stagedPath.isEmpty()) {
-            toast("Сначала выберите .itz");
+            toast("请先选择 .itz");
             return;
         }
         themeRun = true;
-        themeStatus("Команда отправлена — откройте режим игры…", Ui.ACCENT);
+        themeStatus("命令已发送 — 请打开游戏模式…", Ui.ACCENT);
         showHint();
         if (!apply(themeCommand())) {
             themeRun = false;
             hideHint();
-            themeStatus("GC Tune не в списке игр — добавьте приложение и повторите", Ui.ERROR);
+            themeStatus("GC Tune 不在游戏列表中 — 请添加该应用后重试", Ui.ERROR);
         }
     }
 
@@ -1424,27 +1424,27 @@ public class Main extends Activity {
         hideHint();
         String out = (ok && e != null && e.out != null) ? e.out : "";
         if (!ok) {
-            themeStatus("Нет ответа от uid 1000 — откройте режим игры и повторите", Ui.ERROR);
+            themeStatus("uid 1000 无响应 — 请打开游戏模式后重试", Ui.ERROR);
         } else if (out.contains("SRC_UNREADABLE")) {
-            themeStatus("uid 1000 не может прочитать файл-источник", Ui.ERROR);
+            themeStatus("uid 1000 无法读取源文件", Ui.ERROR);
         } else if (out.contains("SRC_STALE")) {
-            themeStatus("Источник не совпадает с выбранным файлом — повторите выбор", Ui.ERROR);
+            themeStatus("源文件与所选文件不一致 — 请重新选择", Ui.ERROR);
         } else if (out.contains("NO_THEME_FOUND")) {
-            themeStatus("В папке .../theme/.dwd/.../T нет ни одного .itz", Ui.ERROR);
+            themeStatus(".../theme/.dwd/.../T 目录下没有任何 .itz 文件", Ui.ERROR);
         } else if (out.contains("NO_PKG")) {
-            themeStatus("Пакет iTheme определить не удалось — подробности в консоли", Ui.ERROR);
+            themeStatus("无法识别 iTheme 包 — 详情见控制台", Ui.ERROR);
         } else if (!out.contains("OK:")) {
-            themeStatus("Запись не удалась — вывод в консоли (вкладка Shell)", Ui.ERROR);
+            themeStatus("写入失败 — 输出见控制台（Shell 标签页）", Ui.ERROR);
         } else {
             int n = countOccurrences(out, "OK:");
             int fails = countOccurrences(out, "FAIL:");
-            String base = "Заменено файлов: " + n + (fails > 0 ? ", ошибок: " + fails : "");
+            String base = "已替换文件数: " + n + (fails > 0 ? "，错误: " + fails : "");
             if (out.contains("APP_FAILED")) {
-                themeStatus(base + " — iTheme не открылся, вывод в консоли", Ui.ERROR);
+                themeStatus(base + " — iTheme 未打开，输出见控制台", Ui.ERROR);
             } else if (out.contains("APP_OPENED")) {
-                themeStatus(base + ", iTheme открыт — применяйте тему", Ui.ACCENT);
+                themeStatus(base + "，iTheme 已打开 — 请应用主题", Ui.ACCENT);
             } else {
-                themeStatus(base + " — подробности в консоли", Ui.TEXT);
+                themeStatus(base + " — 详情见控制台", Ui.TEXT);
             }
         }
     }
@@ -1481,14 +1481,14 @@ public class Main extends Activity {
         root.setPadding(Ui.dp(this, 18), Ui.dp(this, 22), Ui.dp(this, 18), Ui.dp(this, 30));
         scroll.addView(root, new FrameLayout.LayoutParams(-1, -2));
 
-        TextView iconsTitle = Ui.label(this, "Иконки", 26f, Ui.TEXT);
-        root.addView(pageTitle(iconsTitle, "Перекраска и стилизация иконок"));
+        TextView iconsTitle = Ui.label(this, "图标", 26f, Ui.TEXT);
+        root.addView(pageTitle(iconsTitle, "图标着色与样式化"));
 
         // ---- preview card
         LinearLayout previewCard = Ui.col(this);
         previewCard.setBackground(Ui.shape(this, Ui.SURFACE, 12f, Ui.BORDER_SOFT, 1f));
         previewCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14));
-        previewCard.addView(Ui.section(this, "Предпросмотр"));
+        previewCard.addView(Ui.section(this, "预览"));
         iconsPreviewRow = new LinearLayout(this);
         iconsPreviewRow.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams prevLp = new LinearLayout.LayoutParams(-1, -2);
@@ -1502,17 +1502,17 @@ public class Main extends Activity {
         LinearLayout srcCard = Ui.col(this);
         srcCard.setBackground(Ui.shape(this, Ui.SURFACE, 12f, Ui.BORDER_SOFT, 1f));
         srcCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14));
-        srcCard.addView(Ui.section(this, "Источник иконок"));
+        srcCard.addView(Ui.section(this, "图标来源"));
 
         LinearLayout srcRow = new LinearLayout(this);
         srcRow.setOrientation(LinearLayout.HORIZONTAL);
         srcRow.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams srcRowLp = new LinearLayout.LayoutParams(-1, -2);
         srcRowLp.topMargin = Ui.dp(this, 10);
-        iconsSourceValue = Ui.text(this, iconsPackPkg.isEmpty() ? "Системные иконки" : iconsPackLabel,
+        iconsSourceValue = Ui.text(this, iconsPackPkg.isEmpty() ? "系统图标" : iconsPackLabel,
                 14f, Ui.TEXT);
         srcRow.addView(iconsSourceValue, new LinearLayout.LayoutParams(0, -2, 1f));
-        View pickBtn = pillButton(M3Icons.folder(Ui.ACCENT, Ui.dp(this, 18)), "Пак",
+        View pickBtn = pillButton(M3Icons.folder(Ui.ACCENT, Ui.dp(this, 18)), "图标包",
                 new View.OnClickListener() {
                     @Override public void onClick(View v) { chooseIconPack(); }
                 });
@@ -1530,7 +1530,7 @@ public class Main extends Activity {
         LinearLayout colorCard = Ui.col(this);
         colorCard.setBackground(Ui.shape(this, Ui.SURFACE, 12f, Ui.BORDER_SOFT, 1f));
         colorCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14));
-        colorCard.addView(Ui.section(this, "Цвет перекраски"));
+        colorCard.addView(Ui.section(this, "着色颜色"));
 
         // preset swatches
         String[] presets = {"#3D7D56", "#E53935", "#1E88E5", "#FDD835", "#8E24AA",
@@ -1588,17 +1588,17 @@ public class Main extends Activity {
         LinearLayout tuneCard = Ui.col(this);
         tuneCard.setBackground(Ui.shape(this, Ui.SURFACE, 12f, Ui.BORDER_SOFT, 1f));
         tuneCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14));
-        tuneCard.addView(Ui.section(this, "Тонкая настройка"));
-        sbDesat = addSlider(tuneCard, "Обесцвечивание", iconsDesat, new IntSetter() {
+        tuneCard.addView(Ui.section(this, "微调"));
+        sbDesat = addSlider(tuneCard, "去饱和", iconsDesat, new IntSetter() {
             @Override public void set(int v) { iconsDesat = v; }
         });
-        sbLighten = addSlider(tuneCard, "Осветление", iconsLighten, new IntSetter() {
+        sbLighten = addSlider(tuneCard, "提亮", iconsLighten, new IntSetter() {
             @Override public void set(int v) { iconsLighten = v; }
         });
-        sbStrength = addSlider(tuneCard, "Сила перекраски", iconsStrength, new IntSetter() {
+        sbStrength = addSlider(tuneCard, "着色强度", iconsStrength, new IntSetter() {
             @Override public void set(int v) { iconsStrength = v; }
         });
-        View resetBtn = pillButton(M3Icons.tune(Ui.TEXT, Ui.dp(this, 18)), "Сброс настроек",
+        View resetBtn = pillButton(M3Icons.tune(Ui.TEXT, Ui.dp(this, 18)), "重置设置",
                 new View.OnClickListener() {
                     @Override public void onClick(View v) { resetIconsTuning(); }
                 });
@@ -1613,14 +1613,14 @@ public class Main extends Activity {
         LinearLayout styleCard = Ui.col(this);
         styleCard.setBackground(Ui.shape(this, Ui.SURFACE, 12f, Ui.BORDER_SOFT, 1f));
         styleCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14));
-        styleCard.addView(Ui.section(this, "Стиль: фон + иконка"));
+        styleCard.addView(Ui.section(this, "样式：背景 + 图标"));
 
         LinearLayout switchRow = new LinearLayout(this);
         switchRow.setOrientation(LinearLayout.HORIZONTAL);
         switchRow.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams switchLp = new LinearLayout.LayoutParams(-1, -2);
         switchLp.topMargin = Ui.dp(this, 8);
-        TextView switchLabel = Ui.text(this, "Разделять на слои (как IconPack Studio)", 14f, Ui.TEXT);
+        TextView switchLabel = Ui.text(this, "分层处理（同 IconPack Studio）", 14f, Ui.TEXT);
         switchRow.addView(switchLabel, new LinearLayout.LayoutParams(0, -2, 1f));
         final Switch sw = new Switch(this);
         sw.setChecked(iconsBgEnabled);
@@ -1641,7 +1641,7 @@ public class Main extends Activity {
         bgRow.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams bgRowLp = new LinearLayout.LayoutParams(-1, -2);
         bgRowLp.topMargin = Ui.dp(this, 10);
-        bgRow.addView(Ui.text(this, "Цвет фона:", 13f, Ui.MUTED));
+        bgRow.addView(Ui.text(this, "背景色:", 13f, Ui.MUTED));
         String[] bgPresets = {"#FFFFFF", "#F5F5F5", "#212121", "#000000", "#3D7D56", "#1E88E5"};
         for (String hex : bgPresets) {
             final int color = parseColor(hex);
@@ -1677,10 +1677,10 @@ public class Main extends Activity {
         });
         styleCard.addView(bgRow, bgRowLp);
 
-        sbFgScale = addSlider(styleCard, "Размер иконки", 15, 200, iconsFgScale, new IntSetter() {
+        sbFgScale = addSlider(styleCard, "图标大小", 15, 200, iconsFgScale, new IntSetter() {
             @Override public void set(int v) { iconsFgScale = v; }
         });
-        sbRadius = addSlider(styleCard, "Скругление углов", 0, 50, iconsRadius, new IntSetter() {
+        sbRadius = addSlider(styleCard, "圆角半径", 0, 50, iconsRadius, new IntSetter() {
             @Override public void set(int v) { iconsRadius = v; }
         });
 
@@ -1690,14 +1690,14 @@ public class Main extends Activity {
         shapeHead.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams shLp = new LinearLayout.LayoutParams(-1, -2);
         shLp.topMargin = Ui.dp(this, 14);
-        shapeHead.addView(Ui.section(this, "Форма иконки"), new LinearLayout.LayoutParams(0, -2, 1f));
+        shapeHead.addView(Ui.section(this, "图标形状"), new LinearLayout.LayoutParams(0, -2, 1f));
         styleCard.addView(shapeHead, shLp);
 
         final String[] shapeNames = {
-                "Закругленный", "Squircle", "Круг", "Капля", "Шестигранник", "Восьмигранник",
-                "Цветок (12л)", "Галька", "Пятигранник", "Ромб", "Клевер", "Арка",
-                "Солнце", "Сердце", "Треугольник", "Полукруг", "Капсула (Pill)", "Звезда 16л",
-                "Ромашка 16л", "Волнистый (Scallop)", "Булочка (Bun)", "Пиксели", "1 Угол", "Скошенный"
+                "方圆形", "超椭圆", "圆形", "水滴", "六边形", "八边形",
+                "花朵（12 瓣）", "鹅卵石", "五边形", "菱形", "四叶草", "拱形",
+                "太阳", "心形", "三角形", "半圆", "胶囊（Pill）", "星星 16 角",
+                "雏菊 16 瓣", "波浪形（Scallop）", "面包（Bun）", "像素", "1 个角", "斜切方形"
         };
         final int[] shapeIds = {
                 IconsTinter.SHAPE_ROUNDED, IconsTinter.SHAPE_SQUIRCLE, IconsTinter.SHAPE_CIRCLE,
@@ -1724,7 +1724,7 @@ public class Main extends Activity {
 
         final LinearLayout shapeInfo = Ui.col(this);
         shapeInfo.setPadding(Ui.dp(this, 12), 0, Ui.dp(this, 8), 0);
-        String initialShapeName = "Закругленный";
+        String initialShapeName = "圆角方形";
         for (int i = 0; i < shapeIds.length; i++) {
             if (shapeIds[i] == iconsShape) {
                 initialShapeName = shapeNames[i];
@@ -1733,7 +1733,7 @@ public class Main extends Activity {
         }
         final TextView currentShapeTitle = Ui.text(this, initialShapeName, 14f, Ui.TEXT);
         currentShapeTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        final TextView shapeSub = Ui.text(this, "24 M3 Expressive формы · Нажмите для выбора", 11.5f, Ui.MUTED);
+        final TextView shapeSub = Ui.text(this, "24 种 M3 Expressive 形状 · 点击选择", 11.5f, Ui.MUTED);
         shapeInfo.addView(currentShapeTitle);
         shapeInfo.addView(shapeSub);
         shapePickerBtn.addView(shapeInfo, new LinearLayout.LayoutParams(0, -2, 1f));
@@ -1752,9 +1752,9 @@ public class Main extends Activity {
                 dlgScroll.addView(grid, new FrameLayout.LayoutParams(-1, -2));
 
                 final AlertDialog dialog = new AlertDialog.Builder(Main.this)
-                        .setTitle("Выберите форму (Material 3 Expressive)")
+                        .setTitle("选择形状（Material 3 Expressive）")
                         .setView(dlgScroll)
-                        .setNegativeButton("Закрыть", null)
+                        .setNegativeButton("关闭", null)
                         .create();
 
                 int itemThumbSize = Ui.dp(Main.this, 38);
@@ -1817,7 +1817,7 @@ public class Main extends Activity {
 
         // ---- apply button
         View apply = pillButton(M3Icons.play(Ui.ACCENT, Ui.dp(this, 18)),
-                "Перекрасить и применить",
+                "着色并应用",
                 new View.OnClickListener() {
                     @Override public void onClick(View v) { runIconsApply(); }
                 });
@@ -1829,14 +1829,14 @@ public class Main extends Activity {
         LinearLayout statusCard = Ui.col(this);
         statusCard.setBackground(Ui.shape(this, Ui.INPUT_BG, 12f, Ui.BORDER, 1.2f));
         statusCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 14), Ui.dp(this, 12));
-        iconsStatusText = Ui.text(this, "Выберите цвет и нажмите «Перекрасить»", 13f, Ui.MUTED);
+        iconsStatusText = Ui.text(this, "选择颜色后点击「重新着色」", 13f, Ui.MUTED);
         statusCard.addView(iconsStatusText);
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(-1, -2);
         statusLp.bottomMargin = Ui.dp(this, 14);
         root.addView(statusCard, statusLp);
 
         TextView note = Ui.text(this,
-                "Паки ADW/Nova импортируются. Применение — при открытом режиме игры.",
+                "ADW/Nova 图标包可导入。需在游戏模式开启时应用。",
                 11.5f, Ui.MUTED);
         root.addView(note);
 
@@ -1938,7 +1938,7 @@ public class Main extends Activity {
         if (sbFgScale != null) sbFgScale.setProgress(76 - 15);
         if (sbRadius != null) sbRadius.setProgress(25);
         iconsShape = IconsTinter.SHAPE_ROUNDED;
-        toast("Настройки сброшены");
+        toast("设置已重置");
         saveIconsPrefs();
         refreshIconsPreview();
     }
@@ -1958,21 +1958,21 @@ public class Main extends Activity {
 
     /** Discovers installed icon packs (ADW/Nova intents) and shows a chooser. */
     private void chooseIconPack() {
-        toast("Ищу иконокпаки…");
+        toast("正在查找图标包…");
         new Thread(new Runnable() {
             @Override public void run() {
                 final List<IconPackLoader.Pack> packs = packLoader().findPacks();
                 h.post(new Runnable() {
                     @Override public void run() {
                         if (packs.isEmpty()) {
-                            toast("Иконокпаки не найдены — установите любой пак с Play Market");
+                            toast("未找到图标包 — 请从 Play 商店安装任意图标包");
                             return;
                         }
                         CharSequence[] items = new CharSequence[packs.size() + 1];
-                        items[0] = "Системные иконки (без пака)";
+                        items[0] = "系统图标（无图标包）";
                         for (int i = 0; i < packs.size(); i++) items[i + 1] = packs.get(i).label;
                         new AlertDialog.Builder(Main.this)
-                                .setTitle("Иконокпак")
+                                .setTitle("图标包")
                                 .setItems(items, new DialogInterface.OnClickListener() {
                                     @Override public void onClick(DialogInterface d, int w) {
                                         if (w == 0) {
@@ -1983,7 +1983,7 @@ public class Main extends Activity {
                                         }
                                     }
                                 })
-                                .setNegativeButton("Отмена", null)
+                                .setNegativeButton("取消", null)
                                 .show();
                     }
                 });
@@ -1996,23 +1996,23 @@ public class Main extends Activity {
         iconsPackLabel = label;
         saveIconsPrefs();
         if (iconsSourceValue != null) {
-            iconsSourceValue.setText(pkg.isEmpty() ? "Системные иконки" : label);
+            iconsSourceValue.setText(pkg.isEmpty() ? "系统图标" : label);
         }
         if (pkg.isEmpty()) {
-            iconsStatus("Источник: системные иконки", Ui.ACCENT);
+            iconsStatus("来源：系统图标", Ui.ACCENT);
             refreshIconsPreview();
             return;
         }
-        iconsStatus("Загружаю «" + label + "»…", Ui.ACCENT);
+        iconsStatus("正在加载「" + label + "»…", Ui.ACCENT);
         new Thread(new Runnable() {
             @Override public void run() {
                 final int n = packLoader().load(pkg);
                 h.post(new Runnable() {
                     @Override public void run() {
                         if (n > 0) {
-                            iconsStatus("Пак загружен: " + n + " иконок в маппинге", Ui.ACCENT);
+                            iconsStatus("图标包已加载: " + n + " 个图标在映射中", Ui.ACCENT);
                         } else {
-                            iconsStatus("Пак не поддерживается (нет appfilter.xml)", Ui.ERROR);
+                            iconsStatus("图标包不受支持（缺少 appfilter.xml）", Ui.ERROR);
                         }
                         refreshIconsPreview();
                     }
@@ -2102,21 +2102,21 @@ public class Main extends Activity {
 
     private void runIconsApply() {
         if (busy) {
-            toast("Дождитесь текущей команды");
+            toast("请等待当前命令完成");
             return;
         }
         if (iconsPackages.isEmpty()) {
             loadLauncherApps();
         }
         if (iconsPackages.isEmpty()) {
-            iconsStatus("Не удалось получить список приложений", Ui.ERROR);
+            iconsStatus("无法获取应用列表", Ui.ERROR);
             return;
         }
         iconsRun = true;
         busy = true;
         // persist the whole recipe
         saveIconsPrefs();
-        iconsStatus("Перекрашиваю иконки…", Ui.ACCENT);
+        iconsStatus("正在为图标着色…", Ui.ACCENT);
         showHint();
         final int total = iconsPackages.size();
         new Thread(new Runnable() {
@@ -2162,7 +2162,7 @@ public class Main extends Activity {
                         final int d = done;
                         h.post(new Runnable() {
                             @Override public void run() {
-                                iconsStatus("Перекрашено " + d + " / " + total, Ui.ACCENT);
+                                iconsStatus("已着色 " + d + " / " + total, Ui.ACCENT);
                             }
                         });
                     }
@@ -2228,14 +2228,14 @@ public class Main extends Activity {
                 final int ferr = failed;
                 h.post(new Runnable() {
                     @Override public void run() {
-                        iconsStatus("Отрисовано " + fin + " из " + total
-                                + (ferr > 0 ? " (ошибок: " + ferr + ")" : "")
-                                + " — ставлю через канал…", Ui.ACCENT);
+                        iconsStatus("已绘制 " + fin + " / " + total
+                                + (ferr > 0 ? " （错误: " + ferr + ")" : "")
+                                + " — 正在通过通道安装…", Ui.ACCENT);
                         busy = false;
                         if (!apply(iconsCommand())) {
                             iconsRun = false;
                             hideHint();
-                            iconsStatus("GC Tune не в списке игр — добавьте приложение и повторите", Ui.ERROR);
+                            iconsStatus("GC Tune 不在游戏列表中 — 请添加该应用后重试", Ui.ERROR);
                         }
                     }
                 });
@@ -2300,7 +2300,7 @@ public class Main extends Activity {
         sb.append("LOCK=$TD/.icons_gctune_lock;");
         // Stale locks must die: the lock is a directory and the old "find
         // -mmin -delete" probe is not supported by every toybox build, which
-        // left "предыдущая установка ещё идёт" hanging forever. Age is checked
+        // left "上一次安装仍在进行" hanging forever. Age is checked
         // with stat/date (both always available), stale (>3 min) is removed.
         sb.append("if ! mkdir $LOCK 2>/dev/null; then ");
         sb.append("ts=$(stat -c %Y $LOCK 2>/dev/null); now=$(date +%s); ");
@@ -2396,11 +2396,11 @@ public class Main extends Activity {
         hideHint();
         String out = (ok && e != null && e.out != null) ? e.out : "";
         if (!ok) {
-            iconsStatus("Нет ответа от uid 1000 — откройте режим игры и повторите", Ui.ERROR);
+            iconsStatus("uid 1000 无响应 — 请打开游戏模式后重试", Ui.ERROR);
         } else if (out.contains("NO_ICONS")) {
-            iconsStatus("Нет перекрашенных иконок — повторите", Ui.ERROR);
+            iconsStatus("没有已完成着色的图标 — 请重试", Ui.ERROR);
         } else if (out.contains("BUSY")) {
-            iconsStatus("Предыдущая установка ещё идёт — подождите и повторите", Ui.ERROR);
+            iconsStatus("上一次安装仍在进行 — 请稍候重试", Ui.ERROR);
         } else if (out.contains("APPLIED")) {
             String n = "";
             int i = out.indexOf("APPLIED_ICONS=");
@@ -2411,13 +2411,13 @@ public class Main extends Activity {
                     if (c < '0' || c > '9') break;
                     sb.append(c);
                 }
-                if (sb.length() > 0) n = " (" + sb + " иконок)";
+                if (sb.length() > 0) n = " (" + sb + " 个图标）";
             }
-            iconsStatus("Иконки применены" + n + " — проверьте лаунчер"
-                    + (styleToggleOk ? "" : " (стиль не переключился: нет WRITE_SECURE_SETTINGS)"),
+            iconsStatus("图标已应用" + n + " — 请检查桌面启动器"
+                    + (styleToggleOk ? "" : " （样式未切换：缺少 WRITE_SECURE_SETTINGS）"),
                     Ui.ACCENT);
         } else {
-            iconsStatus("Подробности в консоли (вкладка Shell)", Ui.TEXT);
+            iconsStatus("详情见控制台（Shell 标签页）", Ui.TEXT);
         }
     }
 
@@ -2431,8 +2431,8 @@ public class Main extends Activity {
         root.setPadding(Ui.dp(this, 18), Ui.dp(this, 22), Ui.dp(this, 18), Ui.dp(this, 30));
         scroll.addView(root, new FrameLayout.LayoutParams(-1, -2));
 
-        TextView title = Ui.label(this, "Настройки", 28f, Ui.TEXT);
-        root.addView(pageTitle(title, "Канал и параметры приложения"));
+        TextView title = Ui.label(this, "设置", 28f, Ui.TEXT);
+        root.addView(pageTitle(title, "通道与应用参数"));
 
         // Expressive Card Container for settings options
         LinearLayout card = Ui.col(this);
@@ -2443,7 +2443,7 @@ public class Main extends Activity {
         card.addView(settingsDivider());
         card.addView(settingsTimeoutRow());
         card.addView(settingsDivider());
-        card.addView(settingsNavRow("Поддерживаемые игры", new View.OnClickListener() {
+        card.addView(settingsNavRow("支持的游戏", new View.OnClickListener() {
             @Override public void onClick(View v) {
                 try {
                     startActivity(SetupActivity.gameSettingsIntent());
@@ -2453,7 +2453,7 @@ public class Main extends Activity {
             }
         }));
         card.addView(settingsDivider());
-        card.addView(settingsNavRow("Первичная настройка", new View.OnClickListener() {
+        card.addView(settingsNavRow("初始设置", new View.OnClickListener() {
             @Override public void onClick(View v) {
                 prefs.edit().putBoolean("setup_done", false).apply();
                 startActivity(new Intent(Main.this, SetupActivity.class));
@@ -2462,7 +2462,7 @@ public class Main extends Activity {
 
         root.addView(card, new LinearLayout.LayoutParams(-1, -2));
 
-        TextView about = Ui.text(this, "GC Tune 1.0 · канал Game Cube", 12f, Ui.MUTED);
+        TextView about = Ui.text(this, "GC Tune 1.0 · 游戏魔盒通道", 12f, Ui.MUTED);
         about.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams aboutLp = new LinearLayout.LayoutParams(-2, -2);
         aboutLp.gravity = Gravity.CENTER_HORIZONTAL;
@@ -2473,7 +2473,7 @@ public class Main extends Activity {
 
     private View settingsSwitchRow() {
         LinearLayout row = settingsRowBase();
-        row.addView(Ui.text(this, "Требовать статус игры", 14f, Ui.TEXT),
+        row.addView(Ui.text(this, "要求游戏状态", 14f, Ui.TEXT),
                 new LinearLayout.LayoutParams(0, -2, 1f));
 
         Switch sw = new Switch(this);
@@ -2496,7 +2496,7 @@ public class Main extends Activity {
 
     private View settingsTimeoutRow() {
         LinearLayout row = settingsRowBase();
-        row.addView(Ui.text(this, "Таймаут, сек", 14f, Ui.TEXT),
+        row.addView(Ui.text(this, "超时（秒）", 14f, Ui.TEXT),
                 new LinearLayout.LayoutParams(0, -2, 1f));
 
         settingsTimeout = new EditText(this);
@@ -2580,17 +2580,17 @@ public class Main extends Activity {
         root.setPadding(Ui.dp(this, 18), Ui.dp(this, 22), Ui.dp(this, 18), Ui.dp(this, 30));
         scroll.addView(root, new FrameLayout.LayoutParams(-1, -2));
 
-        root.addView(pageTitle(Ui.label(this, "Кастомизация", 26f, Ui.TEXT),
-                "Тема, иконки и фон"));
+        root.addView(pageTitle(Ui.label(this, "个性化", 26f, Ui.TEXT),
+                "主题、图标与后台"));
 
         root.addView(customBlock(M3Icons.palette(Ui.ACCENT, Ui.dp(this, 24)),
-                "Тема", "Установка .itz", ThemeActivity.class));
+                "主题", ".itz 安装", ThemeActivity.class));
         root.addView(customBlock(M3Icons.grid(Ui.ACCENT, Ui.dp(this, 24)),
-                "Иконки", "Перекраска и паки", IconsActivity.class));
+                "图标", "着色与图标包", IconsActivity.class));
         root.addView(customBlock(M3Icons.font(Ui.ACCENT, Ui.dp(this, 24)),
-                "Шрифты", "Системные шрифты", FontActivity.class));
+                "字体", "系统字体", FontActivity.class));
         root.addView(customBlock(M3Icons.shield(Ui.ACCENT, Ui.dp(this, 24)),
-                "Прочее", "Защита фона и ADB-мост", MiscActivity.class));
+                "其他", "后台保护与 ADB 桥接", MiscActivity.class));
         return scroll;
     }
 
@@ -2655,8 +2655,8 @@ public class Main extends Activity {
         root.setPadding(Ui.dp(this, 18), Ui.dp(this, 22), Ui.dp(this, 18), Ui.dp(this, 30));
         scroll.addView(root, new FrameLayout.LayoutParams(-1, -2));
 
-        TextView title = Ui.label(this, "Шрифты", 26f, Ui.TEXT);
-        root.addView(pageTitle(title, "Замена TTF в /data/vfonts"));
+        TextView title = Ui.label(this, "字体", 26f, Ui.TEXT);
+        root.addView(pageTitle(title, "替换 /data/vfonts 中的 TTF"));
 
         fontThemeHint = hintCard();
         fontThemeHint.setVisibility(View.GONE);
@@ -2668,14 +2668,14 @@ public class Main extends Activity {
         LinearLayout fileCard = Ui.col(this);
         fileCard.setBackground(Ui.shape(this, Ui.SURFACE, 12f, Ui.BORDER_SOFT, 1f));
         fileCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14), Ui.dp(this, 14));
-        fileCard.addView(Ui.section(this, "Файл шрифта (.ttf)"));
+        fileCard.addView(Ui.section(this, "字体文件（.ttf）"));
 
-        fontThemeFileText = Ui.text(this, "файл не выбран", 14f, Ui.TEXT);
+        fontThemeFileText = Ui.text(this, "未选择文件", 14f, Ui.TEXT);
         LinearLayout.LayoutParams fileLp = new LinearLayout.LayoutParams(-2, -2);
         fileLp.topMargin = Ui.dp(this, 8);
         fileCard.addView(fontThemeFileText, fileLp);
 
-        View choose = pillButton(M3Icons.folder(Ui.ACCENT, Ui.dp(this, 18)), "Выбрать .ttf",
+        View choose = pillButton(M3Icons.folder(Ui.ACCENT, Ui.dp(this, 18)), "选择 .ttf",
                 new View.OnClickListener() {
                     @Override public void onClick(View v) { pickFontFile(); }
                 });
@@ -2689,7 +2689,7 @@ public class Main extends Activity {
 
         // ---- install button
         View install = pillButton(M3Icons.play(Ui.ACCENT, Ui.dp(this, 18)),
-                "Установить и открыть iTheme",
+                "安装并打开 iTheme",
                 new View.OnClickListener() {
                     @Override public void onClick(View v) { runFontInstall(); }
                 });
@@ -2702,14 +2702,14 @@ public class Main extends Activity {
         LinearLayout statusCard = Ui.col(this);
         statusCard.setBackground(Ui.shape(this, Ui.INPUT_BG, 12f, Ui.BORDER, 1.2f));
         statusCard.setPadding(Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 14), Ui.dp(this, 12));
-        fontThemeStatusText = Ui.text(this, "Выберите .ttf и нажмите «Установить»", 13f, Ui.MUTED);
+        fontThemeStatusText = Ui.text(this, "选择 .ttf 后点击「安装」", 13f, Ui.MUTED);
         statusCard.addView(fontThemeStatusText);
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(-1, -2);
         statusLp.bottomMargin = Ui.dp(this, 14);
         root.addView(statusCard, statusLp);
 
         TextView note = Ui.text(this,
-                "Копия — в Download/gctune. Перед заменой создаются бэкапы .bak.", 11.5f, Ui.MUTED);
+                "副本位于 Download/gctune。替换前会生成 .bak 备份。", 11.5f, Ui.MUTED);
         LinearLayout.LayoutParams noteLp = new LinearLayout.LayoutParams(-1, -2);
         noteLp.bottomMargin = Ui.dp(this, 24);
         root.addView(note, noteLp);
@@ -2724,9 +2724,9 @@ public class Main extends Activity {
                 "application/octet-stream", "font/ttf", "application/x-font-ttf", "*/*"});
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         try {
-            startActivityForResult(Intent.createChooser(intent, "Файл шрифта (.ttf)"), REQ_PICK_FONT);
+            startActivityForResult(Intent.createChooser(intent, "字体文件（.ttf）"), REQ_PICK_FONT);
         } catch (Throwable t) {
-            toast("Проводник недоступен");
+            toast("文件管理器不可用");
         }
     }
 
@@ -2760,25 +2760,25 @@ public class Main extends Activity {
 
     private void runFontInstall() {
         if (busy) {
-            toast("Дождитесь текущей команды");
+            toast("请等待当前命令完成");
             return;
         }
         if (fontStaging) {
-            toast("Файл ещё готовится — подождите");
+            toast("文件仍在准备中 — 请稍候");
             return;
         }
         if (fontStagedPath == null || fontStagedPath.isEmpty()) {
-            toast("Сначала выберите .ttf");
+            toast("请先选择 .ttf");
             return;
         }
         fontThemeRun = true;
-        fontStatus("Команда отправлена — откройте режим игры…", Ui.ACCENT);
+        fontStatus("命令已发送 — 请打开游戏模式…", Ui.ACCENT);
         showFontHint();
         String cmd = fontCommand();
         if (!apply(cmd)) {
             fontThemeRun = false;
             hideFontHint();
-            fontStatus("GC Tune не в списке игр — добавьте приложение и повторите", Ui.ERROR);
+            fontStatus("GC Tune 不在游戏列表中 — 请添加该应用后重试", Ui.ERROR);
         }
     }
 
@@ -2792,30 +2792,30 @@ public class Main extends Activity {
         hideFontHint();
         String out = (ok && e != null && e.out != null) ? e.out : "";
         if (!ok) {
-            fontStatus("Нет ответа от uid 1000 — откройте режим игры и повторите", Ui.ERROR);
+            fontStatus("uid 1000 无响应 — 请打开游戏模式后重试", Ui.ERROR);
         } else if (out.contains("SRC_UNREADABLE")) {
-            fontStatus("uid 1000 не может прочитать файл-источник", Ui.ERROR);
+            fontStatus("uid 1000 无法读取源文件", Ui.ERROR);
         } else if (out.contains("SRC_STALE")) {
-            fontStatus("Источник не совпадает с выбранным файлом — повторите выбор", Ui.ERROR);
+            fontStatus("源文件与所选文件不一致 — 请重新选择", Ui.ERROR);
         } else if (out.contains("NO_FONT_FOUND")) {
-            fontStatus("В /data/vfonts/ нет доступных TTF-файлов. Скачайте шрифт в iTheme и повторите.", Ui.ERROR);
+            fontStatus("/data/vfonts/ 中没有可用的 TTF 文件。请在 iTheme 中下载字体后重试。", Ui.ERROR);
         } else if (out.contains("FAIL:MISSING_TTF:") && !out.contains("OK:")) {
-            fontStatus("TTF-файл исчез во время установки. Повторите поиск. Подробности во вкладке Shell.", Ui.ERROR);
+            fontStatus("TTF 文件在安装过程中消失。请重新搜索。详情见 Shell 标签页。", Ui.ERROR);
         } else if (out.contains("NO_PKG")) {
-            fontStatus("Пакет iTheme определить не удалось — подробности в консоли", Ui.ERROR);
+            fontStatus("无法识别 iTheme 包 — 详情见控制台", Ui.ERROR);
         } else if (!out.contains("OK:")) {
-            fontStatus("Запись не удалась — вывод в консоли (вкладка Shell)", Ui.ERROR);
+            fontStatus("写入失败 — 输出见控制台（Shell 标签页）", Ui.ERROR);
         } else {
             int okCount = countOccurrences(out, "OK:");
             int failCount = countOccurrences(out, "FAIL:");
-            String msg = "Заменено файлов: " + okCount
-                    + (failCount > 0 ? ", ошибок: " + failCount : "");
+            String msg = "已替换文件数: " + okCount
+                    + (failCount > 0 ? "，错误: " + failCount : "");
             if (out.contains("APP_FAILED")) {
-                fontStatus(msg + " — iTheme не открылся, вывод в консоли", Ui.ERROR);
+                fontStatus(msg + " — iTheme 未打开，输出见控制台", Ui.ERROR);
             } else if (out.contains("APP_OPENED")) {
-                fontStatus(msg + ", iTheme открыт — примените шрифт и перезагрузитесь — применяйте тему", Ui.ACCENT);
+                fontStatus(msg + "，iTheme 已打开 — 请应用字体并重启 — 再应用主题", Ui.ACCENT);
             } else {
-                fontStatus(msg + " — подробности в консоли", Ui.TEXT);
+                fontStatus(msg + " — 详情见控制台", Ui.TEXT);
             }
         }
     }
@@ -2824,15 +2824,15 @@ public class Main extends Activity {
     private void stageFontFile(final Uri src) {
         if (src == null) return;
         if (fontStaging) {
-            toast("Файл ещё готовится");
+            toast("文件仍在准备中");
             return;
         }
         fontStaging = true;
         fontStagedPath = null;
         fontStagedMd5 = null;
-        fontStatus("Читаю файл…", Ui.MUTED);
+        fontStatus("正在读取文件…", Ui.MUTED);
         final String picked = queryDisplayName(src);
-        if (fontThemeFileText != null) fontThemeFileText.setText("подготовка…");
+        if (fontThemeFileText != null) fontThemeFileText.setText("准备中…");
 
         new Thread(new Runnable() {
             @Override public void run() {
@@ -2870,7 +2870,7 @@ public class Main extends Activity {
                             }
                         }
                         if (staged == null) {
-                            throw firstErr != null ? firstErr : new Exception("копирование не удалось");
+                            throw firstErr != null ? firstErr : new Exception("复制失败");
                         }
                         md5 = md5File(new File(staged));
                         path = staged;
@@ -2892,7 +2892,7 @@ public class Main extends Activity {
                             fontStagedMd5 = fm;
                             fontStagedBytes = size;
                             fontThemeFileText.setText(picked + " · " + sizeTxt + "\n" + fp);
-                            fontStatus("Файл готов, md5 " + fm + " — можно устанавливать", Ui.TEXT);
+                            fontStatus("文件已就绪，md5 " + fm + " — 可以安装", Ui.TEXT);
                         }
                     });
                 } catch (final Throwable t) {
@@ -2901,8 +2901,8 @@ public class Main extends Activity {
                             fontStaging = false;
                             fontStagedPath = null;
                             fontStagedMd5 = null;
-                            fontThemeFileText.setText("файл не выбран");
-                            fontStatus("Ошибка подготовки: " + t.getMessage(), Ui.ERROR);
+                            fontThemeFileText.setText("未选择文件");
+                            fontStatus("准备错误: " + t.getMessage(), Ui.ERROR);
                         }
                     });
                 }
@@ -2937,9 +2937,9 @@ public class Main extends Activity {
         Uri dst = cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
         if (dst == null) throw new Exception("MediaStore insert failed");
         try (InputStream in = cr.openInputStream(src)) {
-            if (in == null) throw new Exception("источник недоступен");
+            if (in == null) throw new Exception("源不可用");
             try (OutputStream out = cr.openOutputStream(dst)) {
-                if (out == null) throw new Exception("хранилище недоступно");
+                if (out == null) throw new Exception("存储不可用");
                 byte[] buf = new byte[64 * 1024];
                 int n;
                 while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
@@ -2973,11 +2973,11 @@ public class Main extends Activity {
 
     // ----------------------------------------------------------------- misc
     private static final String ADB_EXAMPLES =
-            "# команда через канал uid1000\n"
+            "# 通过 uid1000 通道执行的命令\n"
             + "adb shell content call --uri content://com.poc.gctune.bridge --method exec --arg \"id\" --extra wait:i:8\n\n"
-            + "# результат: ack|STATUS|rc|base64\n"
+            + "# 结果：ack|STATUS|rc|base64\n"
             + "adb shell settings get secure gc_tune_adb_out\n\n"
-            + "# или скрипт из репозитория\n"
+            + "# 或来自仓库的脚本\n"
             + ".\\gctune-adb.ps1 \"id\"";
 
     /** Whitelist + appops + standby for ANY package, applied via uid1000. */
@@ -3040,17 +3040,17 @@ public class Main extends Activity {
         root.setPadding(Ui.dp(this, 18), Ui.dp(this, 22), Ui.dp(this, 18), Ui.dp(this, 30));
         scroll.addView(root, new FrameLayout.LayoutParams(-1, -2));
 
-        root.addView(pageTitle(Ui.label(this, "Прочее", 26f, Ui.TEXT),
-                "Живучесть фона и ADB-мост"));
+        root.addView(pageTitle(Ui.label(this, "其他", 26f, Ui.TEXT),
+                "后台保活与 ADB 桥接"));
 
         // ---- unkillable background: pick any installed app, toggle protection & freeze
         LinearLayout keepCard = Ui.col(this);
         keepCard.setBackground(Ui.shape(this, Ui.SURFACE, 24f, Ui.BORDER_SOFT, 1.2f));
         keepCard.setPadding(Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16));
-        keepCard.addView(Ui.section(this, "Защита приложений от выгрузки"));
+        keepCard.addView(Ui.section(this, "防止应用被清理"));
 
         TextView desc = Ui.text(this,
-                "Добавление в белый список батареи Doze (cmd deviceidle whitelist) + разрешение фоновой работы без ограничений.",
+                "加入 Doze 电池白名单（cmd deviceidle whitelist）+ 允许无限制后台运行。",
                 11.5f, Ui.MUTED);
         LinearLayout.LayoutParams descLp = new LinearLayout.LayoutParams(-1, -2);
         descLp.topMargin = Ui.dp(this, 4);
@@ -3063,9 +3063,9 @@ public class Main extends Activity {
         targetBox.setPadding(Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 14), Ui.dp(this, 12));
 
         LinearLayout targetCol = Ui.col(this);
-        miscHardenTarget = Ui.text(this, "Цель: GC Tune", 14f, Ui.TEXT);
+        miscHardenTarget = Ui.text(this, "目标: GC Tune", 14f, Ui.TEXT);
         targetCol.addView(miscHardenTarget);
-        TextView targetSub = Ui.text(this, "Нажмите «Выбрать из списка» для смены", 11f, Ui.MUTED);
+        TextView targetSub = Ui.text(this, "点击「从列表选择」以更换", 11f, Ui.MUTED);
         LinearLayout.LayoutParams tsLp = new LinearLayout.LayoutParams(-1, -2);
         tsLp.topMargin = Ui.dp(this, 2);
         targetCol.addView(targetSub, tsLp);
@@ -3092,13 +3092,13 @@ public class Main extends Activity {
 
         LinearLayout btnRow = Ui.row(this);
         View pickBtn = pillButton(M3Icons.folder(Ui.ACCENT, Ui.dp(this, 18)),
-                "Список приложений",
+                "应用列表",
                 new View.OnClickListener() {
                     @Override public void onClick(View v) { pickHardenApp(); }
                 });
         btnRow.addView(pickBtn, new LinearLayout.LayoutParams(0, -2, 1f));
         View frzBtn = pillButton(M3Icons.stop(Ui.ACCENT, Ui.dp(this, 18)),
-                "Заморозить",
+                "冻结",
                 new View.OnClickListener() {
                     @Override public void onClick(View v) { freezeRun(); }
                 });
@@ -3115,7 +3115,7 @@ public class Main extends Activity {
         keepCard.addView(miscHardenStatus, hardenStLp);
 
         LinearLayout keepRow = Ui.row(this);
-        keepRow.addView(Ui.label(this, "Своя служба в фоне", 14f, Ui.TEXT),
+        keepRow.addView(Ui.label(this, "自建后台服务", 14f, Ui.TEXT),
                 new LinearLayout.LayoutParams(0, -2, 1f));
 
         keepSwitch = new Switch(this);
@@ -3147,12 +3147,12 @@ public class Main extends Activity {
         LinearLayout bridgeCard = Ui.col(this);
         bridgeCard.setBackground(Ui.shape(this, Ui.SURFACE, 24f, Ui.BORDER_SOFT, 1.2f));
         bridgeCard.setPadding(Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16));
-        bridgeCard.addView(Ui.section(this, "ADB-мост"));
+        bridgeCard.addView(Ui.section(this, "ADB 桥接"));
 
         LinearLayout bridgeRow = Ui.row(this);
         LinearLayout bridgeLbl = Ui.col(this);
-        bridgeLbl.addView(Ui.label(this, "Команды по ADB", 14f, Ui.TEXT));
-        TextView bridgeSub = Ui.text(this, "Только adb shell и root", 11.5f, Ui.MUTED);
+        bridgeLbl.addView(Ui.label(this, "ADB 命令", 14f, Ui.TEXT));
+        TextView bridgeSub = Ui.text(this, "仅 adb shell 与 root", 11.5f, Ui.MUTED);
         LinearLayout.LayoutParams bridgeSubLp = new LinearLayout.LayoutParams(-1, -2);
         bridgeSubLp.topMargin = Ui.dp(this, 3);
         bridgeLbl.addView(bridgeSub, bridgeSubLp);
@@ -3193,7 +3193,7 @@ public class Main extends Activity {
         bridgeCard.addView(exCard, exLp);
 
         View copyEx = pillButton(M3Icons.clipboard(Ui.ACCENT, Ui.dp(this, 18)),
-                "Копировать команды",
+                "复制命令",
                 new View.OnClickListener() {
                     @Override public void onClick(View v) {
                         try {
@@ -3202,9 +3202,9 @@ public class Main extends Activity {
                                             getSystemService(CLIPBOARD_SERVICE);
                             cl.setPrimaryClip(android.content.ClipData.newPlainText(
                                     "GC Tune ADB", ADB_EXAMPLES));
-                            toast("Команды скопированы");
+                            toast("命令已复制");
                         } catch (Throwable t) {
-                            toast("Не удалось скопировать");
+                            toast("复制失败");
                         }
                     }
                 });
@@ -3212,7 +3212,7 @@ public class Main extends Activity {
         copyExLp.topMargin = Ui.dp(this, 10);
         bridgeCard.addView(copyEx, copyExLp);
 
-        TextView bridgeWarn = Ui.text(this, "Включайте только на время работы.", 11f, Ui.MUTED);
+        TextView bridgeWarn = Ui.text(this, "仅在需要时开启。", 11f, Ui.MUTED);
         LinearLayout.LayoutParams warnLp = new LinearLayout.LayoutParams(-1, -2);
         warnLp.topMargin = Ui.dp(this, 10);
         bridgeCard.addView(bridgeWarn, warnLp);
@@ -3262,10 +3262,10 @@ public class Main extends Activity {
             int pad = Ui.dp(this, 14);
             body.setPadding(pad, pad, pad, pad);
 
-            body.addView(Ui.section(this, "Приложение"));
+            body.addView(Ui.section(this, "应用"));
 
             final EditText q = new EditText(this);
-            q.setHint("Поиск");
+            q.setHint("搜索");
             q.setHintTextColor(Ui.MUTED);
             q.setTextColor(Ui.TEXT);
             q.setTextSize(14f);
@@ -3313,7 +3313,7 @@ public class Main extends Activity {
                         }
                         if (list.getChildCount() == 0) {
                             TextView none = Ui.text(Main.this,
-                                    "Ничего не найдено", 13f, Ui.MUTED);
+                                    "未找到任何内容", 13f, Ui.MUTED);
                             none.setGravity(Gravity.CENTER);
                             LinearLayout.LayoutParams nLp =
                                     new LinearLayout.LayoutParams(-1, -2);
@@ -3368,7 +3368,7 @@ public class Main extends Activity {
                 }
             }).start();
         } catch (Throwable t) {
-            toast("Список приложений недоступен");
+            toast("应用列表不可用");
         }
     }
 
@@ -3454,7 +3454,7 @@ public class Main extends Activity {
         if (!apply(cmd)) {
             miscRun = false;
             if (miscHardenStatus != null) {
-                miscHardenStatus.setText("не отправлено — нет статуса игры или канал занят");
+                miscHardenStatus.setText("未发送 — 无游戏状态或通道占用");
                 miscHardenStatus.setTextColor(Ui.ERROR);
             }
         }
@@ -3462,20 +3462,20 @@ public class Main extends Activity {
 
     /** Sends the hardening probe for the stored target through the channel. */
     private void runHarden() {
-        runMisc("harden", hardenCommand(hardenPkg()), "добавляю в белый список Doze…");
+        runMisc("harden", hardenCommand(hardenPkg()), "正在加入 Doze 白名单…");
     }
 
     private void runUnharden() {
-        runMisc("unharden", unhardenCommand(hardenPkg()), "удаляю из белого списка Doze…");
+        runMisc("unharden", unhardenCommand(hardenPkg()), "正在从 Doze 白名单移除…");
     }
 
     private void freezeRun() {
         runMisc("freeze", freezeCommand(hardenPkg()),
-                "замораживаю " + prefs.getString("harden_label", "GC Tune") + "…");
+                "正在冻结 " + prefs.getString("harden_label", "GC Tune") + "…");
     }
 
     private void unfreezeRun() {
-        runMisc("unfreeze", unfreezeCommand(hardenPkg()), "снимаю заморозку…");
+        runMisc("unfreeze", unfreezeCommand(hardenPkg()), "正在解除冻结…");
     }
 
     /** Short read-back of the DOZE/SUSP/DIS lines produced by the commands. */
@@ -3484,7 +3484,7 @@ public class Main extends Activity {
         if (miscHardenStatus == null) return;
         String out = (ok && e != null && e.out != null) ? e.out : "";
         if (!ok) {
-            miscHardenStatus.setText("Нет ответа — откройте режим игры");
+            miscHardenStatus.setText("无响应 — 请打开游戏模式");
             miscHardenStatus.setTextColor(Ui.ERROR);
             return;
         }
@@ -3494,11 +3494,11 @@ public class Main extends Activity {
         boolean hasMarkers = out.contains("SUSP=") || out.contains("DIS=");
         if ("freeze".equals(miscAction)) {
             if (susp || dis) {
-                miscHardenStatus.setText("Заморожено"
-                        + (dis ? " (отключено)" : " (suspended)"));
+                miscHardenStatus.setText("已冻结"
+                        + (dis ? " （已关闭）" : " (suspended)"));
                 miscHardenStatus.setTextColor(Ui.ACCENT);
             } else if (hasMarkers) {
-                miscHardenStatus.setText("Фон ограничен, suspend недоступен");
+                miscHardenStatus.setText("后台受限，suspend 不可用");
                 miscHardenStatus.setTextColor(Ui.MUTED);
             } else {
                 miscHardenStatus.setText(out.replace("\n", " · "));
@@ -3506,23 +3506,23 @@ public class Main extends Activity {
             }
         } else if ("unfreeze".equals(miscAction)) {
             if (hasMarkers && !susp && !dis) {
-                miscHardenStatus.setText("Разморожено");
+                miscHardenStatus.setText("已解冻");
                 miscHardenStatus.setTextColor(Ui.ACCENT);
             } else if (hasMarkers) {
-                miscHardenStatus.setText("Частично — вывод в консоли");
+                miscHardenStatus.setText("部分完成 — 输出见控制台");
                 miscHardenStatus.setTextColor(Ui.ERROR);
             } else {
                 miscHardenStatus.setText(out.replace("\n", " · "));
                 miscHardenStatus.setTextColor(Ui.TEXT);
             }
         } else if ("unharden".equals(miscAction)) {
-            miscHardenStatus.setText("Защита снята (удалено из белого списка)");
+            miscHardenStatus.setText("保护已解除（已从白名单移除）");
             miscHardenStatus.setTextColor(Ui.MUTED);
         } else if (out.contains("DOZE=false")) {
-            miscHardenStatus.setText("Не в белом списке — проверьте консоль");
+            miscHardenStatus.setText("不在白名单中 — 请检查控制台");
             miscHardenStatus.setTextColor(Ui.ERROR);
         } else if (out.contains("DOZE=true") || out.contains("DOZE=")) {
-            miscHardenStatus.setText("Защищено: белый список Doze + фон разрешён");
+            miscHardenStatus.setText("已保护：Doze 白名单 + 已允许后台");
             miscHardenStatus.setTextColor(Ui.ACCENT);
         } else {
             miscHardenStatus.setText(out.replace("\n", " · "));
@@ -3535,7 +3535,7 @@ public class Main extends Activity {
         boolean br = prefs.getBoolean("adb_bridge", true);
         String curPkg = hardenPkg();
         if (miscHardenTarget != null) {
-            miscHardenTarget.setText("Цель: "
+            miscHardenTarget.setText("目标: "
                     + prefs.getString("harden_label", "GC Tune"));
         }
         if (targetSw != null) {
@@ -3543,11 +3543,11 @@ public class Main extends Activity {
             targetSw.setChecked(isProtected);
         }
         if (miscKeepStatus != null) {
-            miscKeepStatus.setText(keep ? "служба активна" : "выкл.");
+            miscKeepStatus.setText(keep ? "服务运行中" : "关");
             miscKeepStatus.setTextColor(keep ? Ui.ACCENT : Ui.MUTED);
         }
         if (miscBridgeStatus != null) {
-            StringBuilder sb = new StringBuilder(br ? "включён" : "выключен");
+            StringBuilder sb = new StringBuilder(br ? "已开启" : "已关闭");
             if (br && bridgeLastCmd != null && !bridgeLastCmd.isEmpty()) {
                 sb.append(" · ").append(bridgeLastCmd);
             }
@@ -3590,12 +3590,12 @@ public class Main extends Activity {
      * the waiting binder call.
      */
     private Bundle bridgeSend(String cmd) {
-        if (busy) return bridgeErr("busy", "канал занят — дождитесь текущей команды", 0);
+        if (busy) return bridgeErr("busy", "通道占用 — 请等待当前命令完成", 0);
         boolean game = isGame();
         boolean req = prefs.getBoolean("require_game", true);
         if (req && !game) {
-            String msg = "нет статуса игры — добавьте GC Tune в список игр "
-                    + "(Ультраигровой режим → Поддерживаемые игры)";
+            String msg = "无游戏状态 — 请将 GC Tune 加入游戏列表 "
+                    + "（电竞模式 → 支持的游戏）";
             writeAdbMirror(0, "ERROR", "-", msg);
             return bridgeErr("no_game", msg, 0);
         }
@@ -3603,7 +3603,7 @@ public class Main extends Activity {
         bridgeLastCmd = c;
         updateMiscStatus();
         if (!apply(c)) {
-            String msg = "не отправлено — канал занят или нет статуса игры";
+            String msg = "未发送 — 通道占用或无游戏状态";
             writeAdbMirror(0, "ERROR", "-", msg);
             return bridgeErr("send_failed", msg, 0);
         }
@@ -3622,7 +3622,7 @@ public class Main extends Activity {
         if (ok) {
             out = e != null && e.out != null ? e.out : "";
         } else {
-            out = failReason != null ? failReason : "нет ответа от uid 1000";
+            out = failReason != null ? failReason : "uid 1000 无响应";
             rc = RC_UNKNOWN;
         }
         writeAdbMirror(ack, ok ? "OK" : "FAIL", String.valueOf(rc), out);
@@ -3643,11 +3643,11 @@ public class Main extends Activity {
         @Override
         public Bundle exec(final String cmd, final int waitSec) {
             if (cmd == null || cmd.trim().isEmpty()) {
-                return bridgeErr("empty", "пустая команда", 0);
+                return bridgeErr("empty", "空命令", 0);
             }
             if (!prefs.getBoolean("adb_bridge", true)) {
                 return bridgeErr("disabled",
-                        "мост выключен — включите «Команды по ADB» на странице «Прочее»", 0);
+                        "桥接已关闭 — 请在「其他」页面开启「ADB 命令」", 0);
             }
             bridgeResult = null;
             final CountDownLatch latch = new CountDownLatch(1);
@@ -3721,9 +3721,9 @@ public class Main extends Activity {
                 appendStyled(sb, "$ ", Ui.ACCENT, 12f);
                 appendStyled(sb, cmd + "\n", Ui.TEXT, 12f);
                 if (e.pending) {
-                    appendStyled(sb, "…выполняется\n", Ui.PROMPT, 11f);
+                    appendStyled(sb, "…执行中\n", Ui.PROMPT, 11f);
                 } else if (e.failed) {
-                    appendStyled(sb, "нет ответа от uid 1000\n", Ui.ERROR, 11f);
+                    appendStyled(sb, "uid 1000 无响应\n", Ui.ERROR, 11f);
                 } else {
                     boolean err = e.rc != RC_UNKNOWN && e.rc != 0;
                     String out = e.out != null ? e.out : "";
@@ -3773,7 +3773,7 @@ public class Main extends Activity {
             byte[] data = Base64.decode(base64Output, Base64.DEFAULT);
             return new String(data, StandardCharsets.UTF_8);
         } catch (Exception e) {
-            return "Ошибка декодирования: " + e.getMessage();
+            return "解码错误: " + e.getMessage();
         }
     }
 
@@ -3807,10 +3807,10 @@ public class Main extends Activity {
         intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         try {
-            startActivityForResult(Intent.createChooser(intent, "Файл со скриптом (.sh / .txt)"),
+            startActivityForResult(Intent.createChooser(intent, "脚本文件（.sh / .txt）"),
                     REQ_IMPORT_FILE);
         } catch (Throwable t) {
-            toast("Не удалось открыть проводник");
+            toast("无法打开文件管理器");
         }
     }
 
@@ -3849,9 +3849,9 @@ public class Main extends Activity {
             if (sb.length() > 0 && !sb.toString().endsWith(";")) sb.append(";");
             cmdInput.setText(sb.toString());
             cmdInput.setSelection(cmdInput.getText().length());
-            toast("Импортировано строк: " + lines);
+            toast("已导入行数: " + lines);
         } catch (Exception e) {
-            logStatus("Ошибка импорта: " + e.getMessage());
+            logStatus("导入错误: " + e.getMessage());
         }
     }
 
@@ -3864,7 +3864,7 @@ public class Main extends Activity {
             if (pasteData != null) {
                 cmdInput.setText(pasteData);
                 cmdInput.setSelection(cmdInput.getText().length());
-                toast("Вставлено из буфера");
+                toast("已从剪贴板粘贴");
             }
         }
     }
@@ -3873,7 +3873,7 @@ public class Main extends Activity {
     private void executeCurrentCommand() {
         String raw = cmdInput.getText().toString().trim();
         if (raw.isEmpty()) {
-            toast("Введите команду");
+            toast("请输入命令");
             return;
         }
 
@@ -3895,8 +3895,8 @@ public class Main extends Activity {
         boolean game = isGame();
         boolean req = prefs.getBoolean("require_game", true);
         if (req && !game) {
-            logStatus("GC Tune не в списке игр Game Cube");
-            toast("Добавьте GC Tune: Ультраигровой режим → Поддерживаемые игры → Другое");
+            logStatus("GC Tune 不在游戏魔盒游戏列表中");
+            toast("添加 GC Tune：电竞模式 → 支持的游戏 → 其他");
             refreshStatus();
             return false;
         }
@@ -3941,8 +3941,8 @@ public class Main extends Activity {
             published = body.equals(Settings.Secure.getString(cr, "gc_tune_cmd"));
         } catch (Throwable ignored) {}
         if (!published) {
-            toast("Команда не опубликована для демона: нет WRITE_SECURE_SETTINGS");
-            logStatus("нет WRITE_SECURE_SETTINGS — выполните: adb shell pm grant com.poc.gctune android.permission.WRITE_SECURE_SETTINGS");
+            toast("命令未发布给守护进程：缺少 WRITE_SECURE_SETTINGS");
+            logStatus("缺少 WRITE_SECURE_SETTINGS — 请执行：adb shell pm grant com.poc.gctune android.permission.WRITE_SECURE_SETTINGS");
         }
 
         Entry e = new Entry();
@@ -3967,16 +3967,16 @@ public class Main extends Activity {
             e.out = null;
         }
         busy = false;
-        resolveBridge(false, e, "отменено");
+        resolveBridge(false, e, "已取消");
         if (themeRun) {
             themeRun = false;
             hideHint();
-            themeStatus("Отменено", Ui.MUTED);
+            themeStatus("已取消", Ui.MUTED);
         }
         if (fontThemeRun) {
             fontThemeRun = false;
             hideFontHint();
-            fontStatus("Отменено", Ui.MUTED);
+            fontStatus("已取消", Ui.MUTED);
         }
         setWinTitle(BENIGN_TITLE);
         renderLog();
@@ -4004,8 +4004,8 @@ public class Main extends Activity {
         if (iconsRun) iconsResult(ok, e);
         if (fontThemeRun) fontResult(ok, e);
         if (miscRun) miscResult(ok, e);
-        resolveBridge(ok, e, "нет ответа от uid 1000");
-        if (!ok) toast("Нет ответа — откройте шторку Game Cube");
+        resolveBridge(ok, e, "uid 1000 无响应");
+        if (!ok) toast("无响应 — 请打开游戏魔盒面板");
         refreshStatus();
     }
 
@@ -4034,7 +4034,7 @@ public class Main extends Activity {
 
         if (busy) {
             statusDot.setImageDrawable(iconDotOn);
-            statusText.setText("выполняется…");
+            statusText.setText("执行中…");
             statusText.setTextColor(Ui.ACCENT);
             runBtn.setImageDrawable(iconStop);
             runBtn.setAlpha(1f);
@@ -4051,11 +4051,11 @@ public class Main extends Activity {
 
         if (game) {
             statusDot.setImageDrawable(iconDotOn);
-            statusText.setText("в списке игр");
+            statusText.setText("在游戏列表中");
             statusText.setTextColor(Ui.ACCENT);
         } else {
             statusDot.setImageDrawable(iconDotOff);
-            statusText.setText("не в списке игр");
+            statusText.setText("不在游戏列表中");
             statusText.setTextColor(Ui.MUTED);
         }
     }

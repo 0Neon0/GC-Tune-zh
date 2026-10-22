@@ -53,7 +53,7 @@ public class PrefsActivity extends Activity {
         root.addView(switchRow());
         root.addView(daemonSwitchRow());
         root.addView(timeoutRow());
-        root.addView(navRow("Поддерживаемые игры", new View.OnClickListener() {
+        root.addView(navRow("支持的游戏", new View.OnClickListener() {
             @Override public void onClick(View v) {
                 try {
                     startActivity(SetupActivity.gameSettingsIntent());
@@ -62,7 +62,7 @@ public class PrefsActivity extends Activity {
                 }
             }
         }));
-        root.addView(navRow("Первичная настройка", new View.OnClickListener() {
+        root.addView(navRow("初始设置", new View.OnClickListener() {
             @Override public void onClick(View v) {
                 prefs.edit().putBoolean("setup_done", false).apply();
                 startActivity(new Intent(PrefsActivity.this, SetupActivity.class));
@@ -70,7 +70,7 @@ public class PrefsActivity extends Activity {
             }
         }));
 
-        TextView about = Ui.text(this, "GC Tune 1.0 · канал Game Cube", 11f, Ui.MUTED);
+        TextView about = Ui.text(this, "GC Tune 1.0 · 游戏魔盒通道", 11f, Ui.MUTED);
         about.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams aboutLp = new LinearLayout.LayoutParams(-2, -2);
         aboutLp.gravity = Gravity.CENTER_HORIZONTAL;
@@ -92,7 +92,7 @@ public class PrefsActivity extends Activity {
         });
         row.addView(back, new LinearLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40)));
 
-        TextView title = Ui.label(this, "Настройки", 20f, Ui.TEXT);
+        TextView title = Ui.label(this, "设置", 20f, Ui.TEXT);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-2, -2);
         titleLp.leftMargin = Ui.dp(this, 10);
         row.addView(title, titleLp);
@@ -106,7 +106,7 @@ public class PrefsActivity extends Activity {
     private View switchRow() {
         LinearLayout row = rowBase();
 
-        TextView t = Ui.text(this, "Требовать статус игры", 14f, Ui.TEXT);
+        TextView t = Ui.text(this, "要求游戏状态", 14f, Ui.TEXT);
         row.addView(t, new LinearLayout.LayoutParams(0, -2, 1f));
 
         Switch sw = new Switch(this);
@@ -130,7 +130,7 @@ public class PrefsActivity extends Activity {
     private View daemonSwitchRow() {
         LinearLayout row = rowBase();
 
-        TextView t = Ui.text(this, "Авто-исполнение (демон)", 14f, Ui.TEXT);
+        TextView t = Ui.text(this, "自动执行（守护进程）", 14f, Ui.TEXT);
         row.addView(t, new LinearLayout.LayoutParams(0, -2, 1f));
 
         Switch sw = new Switch(this);
@@ -156,7 +156,7 @@ public class PrefsActivity extends Activity {
     private View timeoutRow() {
         LinearLayout row = rowBase();
 
-        TextView t = Ui.text(this, "Таймаут, сек", 14f, Ui.TEXT);
+        TextView t = Ui.text(this, "超时（秒）", 14f, Ui.TEXT);
         row.addView(t, new LinearLayout.LayoutParams(0, -2, 1f));
 
         timeoutInput = new EditText(this);

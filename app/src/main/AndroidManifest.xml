@@ -19,7 +19,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- rest is zero permissions: everything privileged goes through the uid1000 channel -->
     <application
-        android:label="GC Tune"
+        android:label="GC Tune 调参"
         android:theme="@style/AppTheme"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round">

@@ -259,7 +259,7 @@ final class M3Icons {
         return new Icon(color, 3f, sizePx).stroke(circle(12f, 12f, 5.6f));
     }
 
-    /** Three dots horizontal ("Прочее" tab). */
+    /** Three dots horizontal ("其他" tab). */
     static Icon more(int color, int sizePx) {
         return new Icon(color, 0f, sizePx)
                 .fill(circle(5.6f, 12f, 2f))
